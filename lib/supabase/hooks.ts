@@ -10,7 +10,7 @@ import type {
   PayoutStructure
 } from '@/lib/types'
 
-// Hook for POY rankings (calculated from tournament_results view)
+// Hook for POY rankings (aggregated from poy_tournament_points view)
 export function usePOYRankings() {
   const [rankings, setRankings] = useState<POYRanking[]>([])
   const [loading, setLoading] = useState(true)
@@ -21,12 +21,43 @@ export function usePOYRankings() {
     // Initial fetch
     async function fetchRankings() {
       try {
+        // Fetch per-tournament points from the view
         const { data, error } = await supabase
-          .from('poy_rankings')
+          .from('poy_tournament_points')
           .select('*')
 
         if (error) throw error
-        setRankings(data || [])
+
+        // Aggregate by player
+        const playerMap = new Map<string, POYRanking>()
+
+        data?.forEach((entry: any) => {
+          const existing = playerMap.get(entry.player_id)
+
+          // Parse points as number to avoid string concatenation
+          const points = parseFloat(entry.points) || 0
+          const earnings = parseFloat(entry.earnings) || 0
+
+          if (existing) {
+            existing.total_points += points
+            existing.tournaments_played += 1
+            existing.total_earnings += earnings
+          } else {
+            playerMap.set(entry.player_id, {
+              player_id: entry.player_id,
+              player_name: entry.player_name,
+              total_points: points,
+              tournaments_played: 1,
+              total_earnings: earnings
+            })
+          }
+        })
+
+        // Convert to array and sort by points
+        const aggregated = Array.from(playerMap.values())
+          .sort((a, b) => b.total_points - a.total_points)
+
+        setRankings(aggregated)
       } catch (err) {
         setError(err as Error)
       } finally {

@@ -52,12 +52,12 @@ CREATE TABLE IF NOT EXISTS tournament_results (
 
 -- Create function to calculate POY points using PokerStars reworked formula
 -- Using NUMERIC instead of INTEGER/DECIMAL for better type compatibility
+-- Note: Addons are NOT included in POY calculation (matches sthlm-poker)
 CREATE OR REPLACE FUNCTION calculate_poy_points(
     total_players NUMERIC,
     player_rank NUMERIC,
     buy_in NUMERIC,
     rebuys NUMERIC,
-    addons NUMERIC,
     prize_money NUMERIC
 ) RETURNS NUMERIC AS $$
 DECLARE
@@ -72,8 +72,9 @@ BEGIN
     -- Calculate log(prizeMoney / players + 0.25)
     log_prize := LN(prize_money / total_players + 0.25);
 
-    -- Calculate log(buyIn + rebuys*buyIn + addons*buyIn + 0.25)
-    log_buy_in := LN(buy_in + (rebuys * buy_in) + (addons * buy_in) + 0.25);
+    -- Calculate log(buyIn + rebuys*buyIn + 0.25)
+    -- Note: rebuys is the count, so we multiply by buy_in
+    log_buy_in := LN(buy_in + (rebuys * buy_in) + 0.25);
 
     -- Final formula: 10 * sqrt_part * (1 + log_prize)^2 / (1 + log_buy_in)
     points := 10 * sqrt_part * POWER(1 + log_prize, 2) / (1 + log_buy_in);
@@ -82,26 +83,39 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
--- Create view for POY rankings that calculates points dynamically
-CREATE OR REPLACE VIEW poy_rankings AS
-WITH tournament_player_counts AS (
-    -- Count total confirmed registrations per tournament
+-- Create view for per-tournament POY points (for debugging and frontend aggregation)
+CREATE OR REPLACE VIEW poy_tournament_points AS
+WITH tournament_stats AS (
+    -- Get both completed player count and total registrations for each tournament
+    SELECT
+        t.id as tournament_id,
+        COUNT(DISTINCT tr.id) as players_with_results,
+        COUNT(DISTINCT r.id) FILTER (WHERE r.is_confirmed = true) as total_registrations
+    FROM tournaments t
+    LEFT JOIN tournament_results tr ON tr.tournament_id = t.id
+    LEFT JOIN registrations r ON r.tournament_id = t.id
+    GROUP BY t.id
+),
+tournament_player_counts AS (
+    -- For active tournaments (not all players have results): use total registrations
+    -- For finished tournaments (all players have results): use players_with_results
+    -- Heuristic: if players_with_results >= total_registrations * 0.8, consider it finished
     SELECT
         tournament_id,
-        COUNT(*) as total_players
+        CASE
+            WHEN players_with_results >= total_registrations * 0.8 THEN players_with_results
+            ELSE total_registrations
+        END as total_players
+    FROM tournament_stats
+),
+tournament_prize_pools AS (
+    -- Calculate total prize pool from confirmed registrations including current rebuys (excludes addons)
+    SELECT
+        tournament_id,
+        SUM(buy_in_amount + (number_of_rebuys * buy_in_amount)) as total_prize_pool
     FROM registrations
     WHERE is_confirmed = true
     GROUP BY tournament_id
-),
-tournament_prize_pools AS (
-    -- Calculate total prize pool per tournament from actual buy-ins including rebuys and addons from tournament_results
-    SELECT
-        tr.tournament_id,
-        SUM(reg.buy_in_amount + (tr.number_of_rebuys * reg.buy_in_amount) + (tr.number_of_addons * reg.buy_in_amount)) as total_prize_pool
-    FROM tournament_results tr
-    JOIN registrations reg ON reg.tournament_id = tr.tournament_id AND reg.player_id = tr.player_id
-    WHERE reg.is_confirmed = true
-    GROUP BY tr.tournament_id
 ),
 player_points AS (
     SELECT
@@ -117,13 +131,12 @@ player_points AS (
         tpc.total_players,
         -- Use actual prize pool from all registrations
         tpp.total_prize_pool as prize_money,
-        -- Calculate points using the function
+        -- Calculate points using the function (addons excluded)
         calculate_poy_points(
             tpc.total_players,
             tr.placement,
             reg.buy_in_amount,
             tr.number_of_rebuys,
-            tr.number_of_addons,
             tpp.total_prize_pool
         ) as points,
         -- Get payout amount for this placement (use premium if player selected tier B)
@@ -145,12 +158,16 @@ player_points AS (
 SELECT
     player_id,
     player_name,
-    ROUND(SUM(points), 2) as total_points,
-    COUNT(DISTINCT tournament_id) as tournaments_played,
-    ROUND(SUM(earnings), 2) as total_earnings
+    tournament_id,
+    placement,
+    player_buy_in,
+    number_of_rebuys,
+    total_players,
+    prize_money,
+    ROUND(points, 2) as points,
+    earnings
 FROM player_points
-GROUP BY player_id, player_name
-ORDER BY total_points DESC;
+ORDER BY tournament_id, placement;
 
 -- Create indexes for better performance (if not exist)
 CREATE INDEX IF NOT EXISTS idx_registrations_tournament ON registrations(tournament_id);

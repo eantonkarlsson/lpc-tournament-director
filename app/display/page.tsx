@@ -171,8 +171,17 @@ function DisplayContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-        <p className="text-2xl">Loading tournament...</p>
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="text-center">
+          <div className="animate-pulse text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent mb-4">
+            Loading tournament...
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-3 h-3 bg-cyan-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-3 h-3 bg-cyan-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -190,11 +199,14 @@ function DisplayContent() {
   // Get active players in this tournament (not eliminated)
   // Trim names to handle trailing/leading whitespace
   const activePlayerNames = new Set(
-    registrations.filter((r) => !r.eliminated_at).map((r) => r.full_name.trim())
+    registrations.filter((r) => !r.eliminated_at).map((r) => r.full_name.trim().toLowerCase())
   )
 
+  console.log('Active player names:', Array.from(activePlayerNames))
+
   // Calculate POY points for a given placement in this tournament
-  // Formula: 10 * sqrt(players/rank) * (1 + log(prizeMoney/players + 0.25))^2 / (1 + log(buyIn + rebuys*buyIn + addons*buyIn + 0.25))
+  // Formula: 10 * sqrt(players/rank) * (1 + log(prizeMoney/players + 0.25))^2 / (1 + log(buyIn + rebuys*buyIn + 0.25))
+  // Note: Addons are excluded from POY calculation to match sthlm-poker
   const calculatePOYPointsForPlacement = (placement: number) => {
     if (useMockData) {
       const basePoints = MOCK_POY_POINTS_STRUCTURE[placement] || 0
@@ -204,14 +216,13 @@ function DisplayContent() {
     const totalPlayers = registrations.filter(r => r.is_confirmed).length
     if (totalPlayers === 0 || placement <= 0 || placement > totalPlayers) return 0
 
-    // Calculate total prize pool including rebuys/addons
+    // Calculate total prize pool including rebuys (excludes addons to match backend)
     const totalPrizePool = registrations
       .filter(r => r.is_confirmed)
       .reduce((sum, r) => {
         const buyIn = r.buy_in_amount || 0
         const rebuys = r.number_of_rebuys || 0
-        const addons = r.number_of_addons || 0
-        return sum + buyIn + (rebuys * buyIn) + (addons * buyIn)
+        return sum + buyIn + (rebuys * buyIn)
       }, 0)
 
     // If no prize pool data, can't calculate
@@ -236,12 +247,14 @@ function DisplayContent() {
 
   const maxTournamentPoints = calculatePOYPointsForPlacement(1)
 
-  // Calculate minimum points for each top 3 player (if they finish last)
-  const totalPlayers = useMockData ? 24 : registrations.filter(r => r.is_confirmed).length
-  const minTournamentPoints = calculatePOYPointsForPlacement(totalPlayers)
+  // Calculate remaining players (not yet eliminated)
+  const remainingPlayers = useMockData ? MOCK_REMAINING_PLAYERS : registrations.filter((r) => !r.eliminated_at).length
+
+  // Calculate minimum points for each top 3 player (if they finish last among remaining players)
+  const minTournamentPoints = calculatePOYPointsForPlacement(remainingPlayers)
 
   const top3WithMinPoints = top3Rankings.map(ranking => {
-    const isActive = activePlayerNames.has(ranking.player_name.trim())
+    const isActive = activePlayerNames.has(ranking.player_name.trim().toLowerCase())
     const minPoints = isActive
       ? (ranking.total_points || 0) + minTournamentPoints
       : ranking.total_points || 0
@@ -251,17 +264,17 @@ function DisplayContent() {
     }
   })
 
-  // Show top 10 rankings + any active players not in top 10
-  const top10Rankings = validRankings.slice(0, 10)
+  // Show top 15 rankings + any active players not in top 15
+  const top15Rankings = validRankings.slice(0, 15)
 
-  // Add active players who aren't in top 10
-  const activePlayersNotInTop10 = validRankings
-    .slice(10)
-    .filter(ranking => activePlayerNames.has(ranking.player_name.trim()))
+  // Add active players who aren't in top 15
+  const activePlayersNotInTop15 = validRankings
+    .slice(15)
+    .filter(ranking => activePlayerNames.has(ranking.player_name.trim().toLowerCase()))
 
   // Also add players who are in this tournament but not in POY rankings yet
   const playersNotInRankings = registrations
-    .filter(r => !r.eliminated_at && !validRankings.find(rank => rank.player_name.trim() === r.full_name.trim()))
+    .filter(r => !r.eliminated_at && !validRankings.find(rank => rank.player_name.trim().toLowerCase() === r.full_name.trim().toLowerCase()))
     .map(r => ({
       player_id: r.player_id || r.id, // Use registration id as fallback
       player_name: r.full_name,
@@ -270,7 +283,7 @@ function DisplayContent() {
       total_earnings: 0
     }))
 
-  const allRankingsToShow = [...top10Rankings, ...activePlayersNotInTop10, ...playersNotInRankings]
+  const allRankingsToShow = [...top15Rankings, ...activePlayersNotInTop15, ...playersNotInRankings]
 
   // Sort by total_points descending, treating null/undefined as 0
   const sortedRankings = allRankingsToShow.sort((a, b) => {
@@ -279,62 +292,72 @@ function DisplayContent() {
     return bPoints - aPoints
   })
 
+  console.log('All rankings before slice:', sortedRankings.length)
+  console.log('Sorted rankings (first 20):', sortedRankings.slice(0, 20).map((r, i) => ({
+    index: i + 1,
+    name: r.player_name,
+    points: r.total_points
+  })))
 
-  // Calculate payout info
-  const remainingPlayers = useMockData ? MOCK_REMAINING_PLAYERS : registrations.filter((r) => !r.eliminated_at).length
+  const finalRankings = sortedRankings.slice(0, 15) // Limit to top 15 total
+
+  // Calculate payout info (remainingPlayers already calculated above)
   const nextPayoutPosition = remainingPlayers
   const sortedPayouts = [...payouts].sort((a, b) => a.placement - b.placement).slice(0, 8)
 
   return (
-    <div className="h-screen bg-gray-900 text-white overflow-hidden">
+    <div className="h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden">
       {/* Main Grid Layout */}
-      <div className="h-full grid grid-cols-3 gap-4 p-4">
+      <div className="h-full grid grid-cols-3 gap-6 p-6">
 
         {/* Left Column - POY Rankings */}
         <div className="flex flex-col gap-4">
-          <Card className="bg-gray-800 border-gray-700 p-4 flex flex-col h-full">
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <TrophyIcon className="h-6 w-6 text-yellow-500" />
+          <Card className="bg-slate-900/80 backdrop-blur-sm border-slate-700/50 shadow-2xl p-6 flex flex-col h-full overflow-visible">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-3xl font-bold flex items-center gap-3 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">
+                  <TrophyIcon className="h-7 w-7 text-yellow-500 drop-shadow-lg" />
                   Player of the Year
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3 bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50">
                   <Switch
                     id="point-surge"
                     checked={pointSurgeEnabled}
                     onCheckedChange={setPointSurgeEnabled}
                   />
-                  <Label htmlFor="point-surge" className="text-sm cursor-pointer">
-                    2x Point Surge {pointSurgeEnabled && <Badge variant="destructive" className="ml-1 text-xs">ON</Badge>}
+                  <Label htmlFor="point-surge" className="text-sm font-medium cursor-pointer text-slate-200">
+                    2x Point Surge {pointSurgeEnabled && <Badge variant="destructive" className="ml-1 text-xs font-bold animate-pulse">ON</Badge>}
                   </Label>
                 </div>
               </div>
-              {top3WithMinPoints.length >= 3 && (
-                <div className="text-xs text-gray-400 flex gap-4">
-                  <span>🥇 Min: {top3WithMinPoints[0].minPoints} pts</span>
-                  <span>🥈 Min: {top3WithMinPoints[1].minPoints} pts</span>
-                  <span>🥉 Min: {top3WithMinPoints[2].minPoints} pts</span>
-                </div>
-              )}
             </div>
-            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+            <div className="overflow-visible">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-gray-800 z-10">
-                    <TableRow className="border-gray-700">
-                      <TableHead className="text-gray-400 w-12">Rank</TableHead>
-                      <TableHead className="text-gray-400">Player</TableHead>
-                      <TableHead className="text-gray-400 text-right">Points</TableHead>
+                  <TableHeader className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10">
+                    <TableRow className="border-slate-700/50">
+                      <TableHead className="text-slate-400 font-semibold text-base w-12">Rank</TableHead>
+                      <TableHead className="text-slate-400 font-semibold text-base">Player</TableHead>
+                      <TableHead className="text-slate-400 font-semibold text-base text-right">Points</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                  {sortedRankings.map((ranking, index) => {
+                  {finalRankings.map((ranking, index) => {
                     // Find rank in the valid global rankings
                     const globalRank = validRankings.findIndex(r => r.player_id === ranking.player_id)
                     const hasRank = globalRank >= 0
                     const rank = hasRank ? globalRank + 1 : null
                     const isTopThree = hasRank && rank !== null && rank <= 3
-                    const isActive = activePlayerNames.has(ranking.player_name.trim())
+                    const isActive = activePlayerNames.has(ranking.player_name.trim().toLowerCase())
+
+                    // Debug for last item
+                    if (index === finalRankings.length - 1) {
+                      console.log('LAST item in list (index ' + index + '):', {
+                        name: ranking.player_name,
+                        rank,
+                        isActive,
+                        className: isActive ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-red-500/50'
+                      })
+                    }
 
                     // Player's maximum potential: current points + winning the tournament
                     const playerMaxPotential = (ranking.total_points || 0) + maxTournamentPoints
@@ -342,45 +365,50 @@ function DisplayContent() {
                     // 3rd place player's minimum: their current points + minimum points from finishing last
                     const thirdPlaceMinPoints = top3WithMinPoints[2]?.minPoints || 0
 
-                    // Can reach top 3 if their max beats the current 3rd place minimum
-                    const canReachTop3 = playerMaxPotential > thirdPlaceMinPoints
+                    // Can reach top 3 if their max beats or ties the current 3rd place minimum
+                    const canReachTop3 = playerMaxPotential >= thirdPlaceMinPoints
 
                     return (
                       <TableRow
                         key={ranking.player_id}
-                        className={`border-gray-700 ${isTopThree ? 'bg-gray-800/50' : ''} ${isActive ? 'border-l-4 border-l-green-500' : ''}`}
+                        className={`border-slate-700/50 transition-colors hover:bg-slate-800/30 ${
+                          isTopThree ? 'bg-gradient-to-r from-slate-800/60 to-slate-800/30' : ''
+                        } ${isActive ? 'border-l-4 border-l-emerald-500 shadow-lg shadow-emerald-500/10' : 'border-l-4 border-l-red-500/50'}`}
                       >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-1">
-                            {rank === 1 && <TrophyIcon className="h-4 w-4 text-yellow-500" />}
-                            {rank === 2 && <TrophyIcon className="h-4 w-4 text-gray-400" />}
-                            {rank === 3 && <TrophyIcon className="h-4 w-4 text-orange-600" />}
-                            <span className={isTopThree ? 'font-bold' : ''}>{rank ?? '-'}</span>
+                        <TableCell className="font-medium text-base">
+                          <div className="flex items-center gap-2">
+                            {rank === 1 && <TrophyIcon className="h-5 w-5 text-yellow-400 drop-shadow-lg" />}
+                            {rank === 2 && <TrophyIcon className="h-5 w-5 text-slate-300 drop-shadow-lg" />}
+                            {rank === 3 && <TrophyIcon className="h-5 w-5 text-orange-500 drop-shadow-lg" />}
+                            <span className={`${isTopThree ? 'font-bold text-lg' : 'text-slate-300'}`}>{rank ?? '-'}</span>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className={isTopThree ? 'font-bold' : ''}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`${isTopThree ? 'font-bold text-lg text-white' : 'text-slate-200 text-base'}`}>
                               {ranking.player_name}
                             </span>
-                            {isActive && (
-                              <Badge variant="outline" className="text-xs border-green-500 text-green-400">
-                                Alive
-                              </Badge>
-                            )}
                             {isActive && canReachTop3 && (
-                              <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-400">
-                                Top 3 Candidate
-                              </Badge>
+                              <span className="w-2 h-2 bg-yellow-400 rounded-full inline-block"></span>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className={`text-right ${isTopThree ? 'font-bold' : ''}`}>
+                        <TableCell className={`text-right ${isTopThree ? 'font-bold text-lg' : 'text-base'}`}>
                           <div>
-                            <div>{ranking.total_points || 0}</div>
+                            <div className="text-white">{Math.round(ranking.total_points || 0)}</div>
+                            {isActive && isTopThree && (
+                              <div className="text-xs font-semibold space-y-0.5">
+                                <div className="text-emerald-400">
+                                  ↗ {Math.round(playerMaxPotential)} max
+                                </div>
+                                <div className="text-orange-400">
+                                  ↘ {Math.round((ranking.total_points || 0) + minTournamentPoints)} min
+                                </div>
+                              </div>
+                            )}
                             {isActive && !isTopThree && playerMaxPotential > 0 && (
-                              <div className="text-xs text-blue-400">
-                                {playerMaxPotential} max
+                              <div className={`text-sm font-semibold ${canReachTop3 ? 'text-yellow-400' : 'text-cyan-400'}`}>
+                                {canReachTop3 && '↗ '}{Math.round(playerMaxPotential)} max
                               </div>
                             )}
                           </div>
@@ -395,16 +423,16 @@ function DisplayContent() {
         </div>
 
         {/* Center Column - Timer */}
-        <div className="flex flex-col items-center justify-center gap-6">
+        <div className="flex flex-col items-center justify-center gap-8">
           {/* Level indicator */}
-          <div className="text-center">
+          <div className="text-center flex items-center gap-4">
             {currentBlind && (
-              <Badge variant="outline" className="text-xl px-4 py-2">
+              <Badge variant="outline" className="text-2xl font-bold px-6 py-3 bg-slate-800/50 border-slate-600 text-slate-200 shadow-lg">
                 Level {currentBlind.level}
               </Badge>
             )}
             {isPaused && (
-              <Badge variant="destructive" className="text-lg px-3 py-1 ml-3">
+              <Badge variant="destructive" className="text-xl font-bold px-5 py-2 animate-pulse shadow-lg">
                 PAUSED
               </Badge>
             )}
@@ -412,38 +440,38 @@ function DisplayContent() {
 
           {/* Current blinds */}
           {currentBlind ? (
-            <Card className="bg-gray-800 border-gray-700 p-8 text-center min-w-[400px]">
-              <div className="space-y-3">
-                <div className="text-5xl font-bold text-white">
+            <Card className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-sm border-slate-600/50 shadow-2xl p-10 text-center min-w-[500px]">
+              <div className="space-y-4">
+                <div className="text-7xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
                   {formatChips(currentBlind.small_blind)} / {formatChips(currentBlind.big_blind)}
                 </div>
                 {currentBlind.ante > 0 && (
-                  <div className="text-2xl text-gray-400">
+                  <div className="text-3xl font-semibold text-slate-300">
                     Ante: {formatChips(currentBlind.ante)}
                   </div>
                 )}
               </div>
             </Card>
           ) : (
-            <Card className="bg-gray-800 border-gray-700 p-8 text-center min-w-[400px]">
-              <p className="text-gray-400">No blind structure loaded</p>
+            <Card className="bg-slate-800/90 border-slate-600/50 p-10 text-center min-w-[500px]">
+              <p className="text-slate-400 text-xl">No blind structure loaded</p>
             </Card>
           )}
 
           {/* Time remaining */}
-          <div className={`text-7xl font-mono font-bold ${timeColor}`}>
+          <div className={`text-8xl font-mono font-extrabold tracking-wider drop-shadow-2xl ${timeColor}`}>
             {formatTime(timeRemaining)}
           </div>
 
           {/* Timer Controls */}
           {showControls && (
-            <Card className="bg-gray-800 border-gray-700 p-6 min-w-[500px]">
-              <div className="space-y-4">
+            <Card className="bg-slate-900/80 backdrop-blur-sm border-slate-700/50 shadow-2xl p-6 min-w-[550px]">
+              <div className="space-y-5">
                 {/* Time Slider */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm text-gray-400">
+                <div className="space-y-3">
+                  <div className="flex justify-between text-base font-semibold text-slate-300">
                     <span>Time Remaining</span>
-                    <span>{formatTime(sliderValue[0])}</span>
+                    <span className="text-cyan-400">{formatTime(sliderValue[0])}</span>
                   </div>
                   <Slider
                     value={sliderValue}
@@ -457,16 +485,16 @@ function DisplayContent() {
                 </div>
 
                 {/* Control Buttons */}
-                <div className="flex items-center justify-center gap-3">
+                <div className="flex items-center justify-center gap-4">
                   {/* Previous Level */}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={prevLevel}
                     disabled={currentLevel === 0}
-                    className="h-10 w-10"
+                    className="h-12 w-12 border-slate-600 hover:bg-slate-700 hover:border-slate-500"
                   >
-                    <SkipBackIcon className="h-4 w-4" />
+                    <SkipBackIcon className="h-5 w-5" />
                   </Button>
 
                   {/* Play/Pause */}
@@ -474,7 +502,7 @@ function DisplayContent() {
                     <Button
                       size="default"
                       onClick={start}
-                      className="h-10 px-6 bg-green-600 hover:bg-green-700"
+                      className="h-12 px-8 text-base font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-lg"
                     >
                       <PlayIcon className="h-5 w-5 mr-2" />
                       Start
@@ -483,7 +511,7 @@ function DisplayContent() {
                     <Button
                       size="default"
                       onClick={resume}
-                      className="h-10 px-6 bg-green-600 hover:bg-green-700"
+                      className="h-12 px-8 text-base font-semibold bg-emerald-600 hover:bg-emerald-700 shadow-lg"
                     >
                       <PlayIcon className="h-5 w-5 mr-2" />
                       Resume
@@ -492,7 +520,7 @@ function DisplayContent() {
                     <Button
                       size="default"
                       onClick={pause}
-                      className="h-10 px-6 bg-yellow-600 hover:bg-yellow-700"
+                      className="h-12 px-8 text-base font-semibold bg-amber-600 hover:bg-amber-700 shadow-lg"
                     >
                       <PauseIcon className="h-5 w-5 mr-2" />
                       Pause
@@ -505,9 +533,9 @@ function DisplayContent() {
                     size="sm"
                     onClick={nextLevel}
                     disabled={currentLevel >= blinds.length - 1}
-                    className="h-10 w-10"
+                    className="h-12 w-12 border-slate-600 hover:bg-slate-700 hover:border-slate-500"
                   >
-                    <SkipForwardIcon className="h-4 w-4" />
+                    <SkipForwardIcon className="h-5 w-5" />
                   </Button>
 
                   {/* Reset */}
@@ -515,9 +543,9 @@ function DisplayContent() {
                     variant="outline"
                     size="sm"
                     onClick={reset}
-                    className="h-10 w-10 ml-2"
+                    className="h-12 w-12 ml-2 border-slate-600 hover:bg-slate-700 hover:border-slate-500"
                   >
-                    <RotateCcwIcon className="h-4 w-4" />
+                    <RotateCcwIcon className="h-5 w-5" />
                   </Button>
                 </div>
               </div>
@@ -526,12 +554,12 @@ function DisplayContent() {
 
           {/* Next level */}
           {nextBlind && (
-            <Card className="bg-gray-800 border-gray-700 p-4 text-center min-w-[350px]">
-              <div className="text-gray-400 text-lg mb-1">Next Level</div>
-              <div className="text-2xl font-bold text-white">
+            <Card className="bg-slate-900/70 backdrop-blur-sm border-slate-700/50 shadow-xl p-5 text-center min-w-[400px]">
+              <div className="text-slate-400 font-semibold text-lg mb-2">Next Level</div>
+              <div className="text-3xl font-bold text-white">
                 {formatChips(nextBlind.small_blind)} / {formatChips(nextBlind.big_blind)}
                 {nextBlind.ante > 0 && (
-                  <span className="text-lg text-gray-400 ml-2">
+                  <span className="text-xl text-slate-400 ml-2">
                     (Ante: {formatChips(nextBlind.ante)})
                   </span>
                 )}
@@ -542,32 +570,32 @@ function DisplayContent() {
 
         {/* Right Column - Payouts */}
         <div className="flex flex-col gap-4">
-          <Card className="bg-gray-800 border-gray-700 p-4 flex-1 overflow-hidden flex flex-col">
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <DollarSignIcon className="h-6 w-6 text-green-500" />
+          <Card className="bg-slate-900/80 backdrop-blur-sm border-slate-700/50 shadow-2xl p-6 flex-1 overflow-hidden flex flex-col">
+            <h2 className="text-3xl font-bold mb-6 flex items-center gap-3 bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
+              <DollarSignIcon className="h-7 w-7 text-emerald-500 drop-shadow-lg" />
               Prize Pool
             </h2>
 
             {/* Summary */}
-            <div className="mb-4 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Remaining Players:</span>
-                <span className="font-bold text-xl">{remainingPlayers}</span>
+            <div className="mb-6 space-y-4">
+              <div className="flex justify-between items-center bg-slate-800/50 px-4 py-3 rounded-lg border border-slate-700/50">
+                <span className="text-base font-semibold text-slate-300">Remaining Players:</span>
+                <span className="font-bold text-3xl text-white">{remainingPlayers}</span>
               </div>
-              <div className="border-t border-gray-700 pt-3">
-                <div className="text-gray-400 text-sm mb-2">Next Payout:</div>
-                <div className="space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-300">If Standard:</span>
-                    <span className="font-bold text-green-500">
+              <div className="border-t border-slate-700/50 pt-4">
+                <div className="text-slate-400 font-semibold text-base mb-3">Next Payout:</div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center bg-slate-800/30 px-4 py-2 rounded-lg">
+                    <span className="text-sm font-medium text-slate-300">If Standard:</span>
+                    <span className="font-bold text-lg text-emerald-400">
                       {sortedPayouts.find((p) => p.placement === nextPayoutPosition)
                         ? formatCurrency(sortedPayouts.find((p) => p.placement === nextPayoutPosition)!.amount)
                         : '-'}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-300">If Premium:</span>
-                    <span className="font-bold text-green-500">
+                  <div className="flex justify-between items-center bg-slate-800/30 px-4 py-2 rounded-lg">
+                    <span className="text-sm font-medium text-slate-300">If Premium:</span>
+                    <span className="font-bold text-lg text-emerald-400">
                       {sortedPayouts.find((p) => p.placement === nextPayoutPosition)?.amount_premium
                         ? formatCurrency(sortedPayouts.find((p) => p.placement === nextPayoutPosition)!.amount_premium!)
                         : '-'}
@@ -579,11 +607,11 @@ function DisplayContent() {
 
             <div className="overflow-y-auto flex-1">
               <Table>
-                <TableHeader>
-                  <TableRow className="border-gray-700">
-                    <TableHead className="text-gray-400 w-20">Place</TableHead>
-                    <TableHead className="text-gray-400 text-right">Standard</TableHead>
-                    <TableHead className="text-gray-400 text-right">Premium</TableHead>
+                <TableHeader className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10">
+                  <TableRow className="border-slate-700/50">
+                    <TableHead className="text-slate-400 font-semibold text-base w-20">Place</TableHead>
+                    <TableHead className="text-slate-400 font-semibold text-base text-right">Standard</TableHead>
+                    <TableHead className="text-slate-400 font-semibold text-base text-right">Premium</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -594,34 +622,34 @@ function DisplayContent() {
                     return (
                       <TableRow
                         key={payout.id}
-                        className={`border-gray-700 ${
-                          isNext ? 'bg-green-900/30' : ''
+                        className={`border-slate-700/50 transition-colors hover:bg-slate-800/30 ${
+                          isNext ? 'bg-emerald-900/30 shadow-lg shadow-emerald-500/10' : ''
                         }`}
                       >
-                        <TableCell>
+                        <TableCell className="text-base">
                           <div className="flex items-center gap-2">
-                            <span className={isNext ? 'font-bold' : ''}>
-                              {payout.placement === 1 ? '1st' :
-                               payout.placement === 2 ? '2nd' :
-                               payout.placement === 3 ? '3rd' :
+                            <span className={`${isNext ? 'font-bold text-lg text-white' : 'text-slate-300'}`}>
+                              {payout.placement === 1 ? '🥇 1st' :
+                               payout.placement === 2 ? '🥈 2nd' :
+                               payout.placement === 3 ? '🥉 3rd' :
                                `${payout.placement}th`}
                             </span>
                             {isNext && (
-                              <Badge variant="default" className="bg-green-600 text-xs">
+                              <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
                                 Next
                               </Badge>
                             )}
                             {isPaid && (
-                              <Badge variant="default" className="bg-gray-600 text-xs">
+                              <Badge variant="default" className="bg-slate-600 text-xs font-semibold">
                                 Paid
                               </Badge>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className={`text-right ${isNext ? 'font-bold text-green-500' : ''}`}>
+                        <TableCell className={`text-right text-base ${isNext ? 'font-bold text-lg text-emerald-400' : 'text-slate-200'}`}>
                           {formatCurrency(payout.amount)}
                         </TableCell>
-                        <TableCell className={`text-right ${isNext ? 'font-bold text-green-500' : ''}`}>
+                        <TableCell className={`text-right text-base ${isNext ? 'font-bold text-lg text-emerald-400' : 'text-slate-200'}`}>
                           {payout.amount_premium ? formatCurrency(payout.amount_premium) : '-'}
                         </TableCell>
                       </TableRow>
@@ -635,25 +663,29 @@ function DisplayContent() {
       </div>
 
       {/* Fullscreen toggle */}
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-6 right-6">
         <Button
           variant="outline"
           size="sm"
           onClick={toggleFullscreen}
-          className="bg-gray-800/80 border-gray-700"
+          className="bg-slate-900/80 backdrop-blur-sm border-slate-600 hover:bg-slate-800 hover:border-slate-500 shadow-xl"
         >
           {isFullscreen ? (
-            <MinimizeIcon className="h-4 w-4" />
+            <MinimizeIcon className="h-5 w-5" />
           ) : (
-            <MaximizeIcon className="h-4 w-4" />
+            <MaximizeIcon className="h-5 w-5" />
           )}
         </Button>
       </div>
 
       {/* Keyboard hints */}
       {!isFullscreen && (
-        <div className="absolute bottom-4 left-4 text-gray-400 text-sm space-y-1">
-          <p>F - Fullscreen • C - Toggle controls • Space - Play/Pause</p>
+        <div className="absolute bottom-6 left-6 bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 px-4 py-3 rounded-lg shadow-xl">
+          <p className="text-slate-300 text-sm font-medium">
+            <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs">F</kbd> Fullscreen •
+            <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs ml-2">C</kbd> Toggle controls •
+            <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs ml-2">Space</kbd> Play/Pause
+          </p>
         </div>
       )}
     </div>
@@ -663,8 +695,17 @@ function DisplayContent() {
 export default function DisplayPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-        <p className="text-2xl">Loading tournament display...</p>
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+        <div className="text-center">
+          <div className="animate-pulse text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent mb-4">
+            Loading tournament display...
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-3 h-3 bg-cyan-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-3 h-3 bg-cyan-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        </div>
       </div>
     }>
       <DisplayContent />
