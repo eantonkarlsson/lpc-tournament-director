@@ -67,22 +67,34 @@ export function usePOYRankings() {
 
     fetchRankings()
 
-    // Subscribe to tournament_results changes to trigger refetch
+    // Subscribe to both tournament_results AND registrations changes to trigger refetch
+    // (registrations affect POY due to rebuy counts and prize pool)
     const channel = supabase
-      .channel('tournament-results-changes')
+      .channel('poy-rankings-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tournament_results' },
         () => {
+          console.log('tournament_results changed, refetching POY rankings')
           fetchRankings()
         }
       )
-      .subscribe()
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'registrations' },
+        () => {
+          console.log('registrations changed, refetching POY rankings')
+          fetchRankings()
+        }
+      )
+      .subscribe((status) => {
+        console.log('POY rankings subscription status:', status)
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [supabase])
 
   return { rankings, loading, error }
 }
@@ -147,7 +159,7 @@ export function useRegistrations(tournamentId: string) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [tournamentId])
+  }, [tournamentId, supabase])
 
   return { registrations, loading, error }
 }
@@ -204,7 +216,7 @@ export function useTournament(tournamentId: string) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [tournamentId])
+  }, [tournamentId, supabase])
 
   return { tournament, loading, error }
 }
@@ -240,7 +252,7 @@ export function useBlindStructure(tournamentId: string) {
     }
 
     fetchBlinds()
-  }, [tournamentId])
+  }, [tournamentId, supabase])
 
   return { blinds, loading, error }
 }
@@ -276,7 +288,7 @@ export function usePayoutStructure(tournamentId: string) {
     }
 
     fetchPayouts()
-  }, [tournamentId])
+  }, [tournamentId, supabase])
 
   return { payouts, loading, error }
 }

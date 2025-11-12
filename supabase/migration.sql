@@ -83,30 +83,27 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
+-- Add active column to tournaments table for distinguishing active vs finished tournaments
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT false;
+
 -- Create view for per-tournament POY points (for debugging and frontend aggregation)
 CREATE OR REPLACE VIEW poy_tournament_points AS
-WITH tournament_stats AS (
-    -- Get both completed player count and total registrations for each tournament
+WITH tournament_player_counts AS (
+    -- For active tournaments: use total confirmed registrations
+    -- For finished tournaments: use players with results (actual player count)
     SELECT
         t.id as tournament_id,
-        COUNT(DISTINCT tr.id) as players_with_results,
-        COUNT(DISTINCT r.id) FILTER (WHERE r.is_confirmed = true) as total_registrations
-    FROM tournaments t
-    LEFT JOIN tournament_results tr ON tr.tournament_id = t.id
-    LEFT JOIN registrations r ON r.tournament_id = t.id
-    GROUP BY t.id
-),
-tournament_player_counts AS (
-    -- For active tournaments (not all players have results): use total registrations
-    -- For finished tournaments (all players have results): use players_with_results
-    -- Heuristic: if players_with_results >= total_registrations * 0.8, consider it finished
-    SELECT
-        tournament_id,
         CASE
-            WHEN players_with_results >= total_registrations * 0.8 THEN players_with_results
-            ELSE total_registrations
+            WHEN t.active = true THEN (
+                SELECT COUNT(*) FROM registrations r
+                WHERE r.tournament_id = t.id AND r.is_confirmed = true
+            )
+            ELSE (
+                SELECT COUNT(*) FROM tournament_results tr
+                WHERE tr.tournament_id = t.id
+            )
         END as total_players
-    FROM tournament_stats
+    FROM tournaments t
 ),
 tournament_prize_pools AS (
     -- Calculate total prize pool from confirmed registrations including current rebuys (excludes addons)

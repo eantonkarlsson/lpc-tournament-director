@@ -1,6 +1,13 @@
--- Fix POY calculation for active tournaments
--- This recreates the view to handle active vs finished tournaments correctly using the active column
+-- Add active column to tournaments table
+-- This allows us to distinguish between active and finished tournaments for POY calculation
 
+-- Add the column (default to false for existing tournaments, true for new ones)
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT false;
+
+-- You can manually set your current active tournament:
+-- UPDATE tournaments SET active = true WHERE id = 'your-tournament-id';
+
+-- Now recreate the view to use the active column instead of the 80% heuristic
 DROP VIEW IF EXISTS poy_tournament_points;
 
 CREATE OR REPLACE VIEW poy_tournament_points AS

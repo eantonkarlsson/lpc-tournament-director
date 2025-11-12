@@ -16,16 +16,16 @@ export const MOCK_POY_RANKINGS: POYRanking[] = [
 ]
 
 export const MOCK_BLINDS: BlindStructure[] = [
-  { id: '1', tournament_id: 'demo', level: 1, small_blind: 25, big_blind: 50, ante: 0, duration: 900, created_at: '' },
-  { id: '2', tournament_id: 'demo', level: 2, small_blind: 50, big_blind: 100, ante: 0, duration: 900, created_at: '' },
-  { id: '3', tournament_id: 'demo', level: 3, small_blind: 75, big_blind: 150, ante: 25, duration: 900, created_at: '' },
-  { id: '4', tournament_id: 'demo', level: 4, small_blind: 100, big_blind: 200, ante: 25, duration: 900, created_at: '' },
-  { id: '5', tournament_id: 'demo', level: 5, small_blind: 150, big_blind: 300, ante: 50, duration: 900, created_at: '' },
-  { id: '6', tournament_id: 'demo', level: 6, small_blind: 200, big_blind: 400, ante: 50, duration: 900, created_at: '' },
-  { id: '7', tournament_id: 'demo', level: 7, small_blind: 300, big_blind: 600, ante: 100, duration: 900, created_at: '' },
-  { id: '8', tournament_id: 'demo', level: 8, small_blind: 400, big_blind: 800, ante: 100, duration: 900, created_at: '' },
-  { id: '9', tournament_id: 'demo', level: 9, small_blind: 600, big_blind: 1200, ante: 200, duration: 900, created_at: '' },
-  { id: '10', tournament_id: 'demo', level: 10, small_blind: 800, big_blind: 1600, ante: 200, duration: 900, created_at: '' },
+  { id: '1', tournament_id: 'demo', level: 1, small_blind: 25, big_blind: 50, ante: 0, duration: 900, break_duration: null, created_at: '' },
+  { id: '2', tournament_id: 'demo', level: 2, small_blind: 50, big_blind: 100, ante: 0, duration: 900, break_duration: null, created_at: '' },
+  { id: '3', tournament_id: 'demo', level: 3, small_blind: 75, big_blind: 150, ante: 25, duration: 900, break_duration: null, created_at: '' },
+  { id: '4', tournament_id: 'demo', level: 4, small_blind: 100, big_blind: 200, ante: 25, duration: 900, break_duration: 600, created_at: '' }, // 10 min break
+  { id: '5', tournament_id: 'demo', level: 5, small_blind: 150, big_blind: 300, ante: 50, duration: 900, break_duration: null, created_at: '' },
+  { id: '6', tournament_id: 'demo', level: 6, small_blind: 200, big_blind: 400, ante: 50, duration: 900, break_duration: null, created_at: '' },
+  { id: '7', tournament_id: 'demo', level: 7, small_blind: 300, big_blind: 600, ante: 100, duration: 900, break_duration: null, created_at: '' },
+  { id: '8', tournament_id: 'demo', level: 8, small_blind: 400, big_blind: 800, ante: 100, duration: 900, break_duration: 600, created_at: '' }, // 10 min break
+  { id: '9', tournament_id: 'demo', level: 9, small_blind: 600, big_blind: 1200, ante: 200, duration: 900, break_duration: null, created_at: '' },
+  { id: '10', tournament_id: 'demo', level: 10, small_blind: 800, big_blind: 1600, ante: 200, duration: 900, break_duration: null, created_at: '' },
 ]
 
 export const MOCK_PAYOUTS: PayoutStructure[] = [

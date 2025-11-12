@@ -9,8 +9,6 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -39,9 +37,9 @@ function formatChips(amount: number): string {
 }
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('sv-SE', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'SEK',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
@@ -54,7 +52,6 @@ function DisplayContent() {
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
-  const [pointSurgeEnabled, setPointSurgeEnabled] = useState(false)
 
   // Timer state
   const {
@@ -76,6 +73,9 @@ function DisplayContent() {
 
   // Local state for time slider
   const [sliderValue, setSliderValue] = useState<number[]>([0])
+  const [hasHydrated, setHasHydrated] = useState(false)
+
+  // Timer state is now restored automatically via onRehydrateStorage in the store
 
   // Data hooks - only use when not in demo mode
   const { blinds: blindsData, loading: blindsLoading } = useBlindStructure(useMockData ? '' : tournamentId)
@@ -202,15 +202,13 @@ function DisplayContent() {
     registrations.filter((r) => !r.eliminated_at).map((r) => r.full_name.trim().toLowerCase())
   )
 
-  console.log('Active player names:', Array.from(activePlayerNames))
-
   // Calculate POY points for a given placement in this tournament
   // Formula: 10 * sqrt(players/rank) * (1 + log(prizeMoney/players + 0.25))^2 / (1 + log(buyIn + rebuys*buyIn + 0.25))
   // Note: Addons are excluded from POY calculation to match sthlm-poker
   const calculatePOYPointsForPlacement = (placement: number) => {
     if (useMockData) {
       const basePoints = MOCK_POY_POINTS_STRUCTURE[placement] || 0
-      return pointSurgeEnabled ? basePoints * 2 : basePoints
+      return basePoints
     }
 
     const totalPlayers = registrations.filter(r => r.is_confirmed).length
@@ -238,8 +236,7 @@ function DisplayContent() {
     const logBuyIn = Math.log(avgBuyIn + 0.25)
     const basePoints = 10 * sqrtPart * Math.pow(1 + logPrize, 2) / (1 + logBuyIn)
 
-    // Apply 2x surge if enabled
-    const points = pointSurgeEnabled ? basePoints * 2 : basePoints
+    const points = basePoints
 
     // Ensure we return a valid number
     return isNaN(points) || !isFinite(points) ? 0 : Math.round(points * 100) / 100
@@ -249,6 +246,9 @@ function DisplayContent() {
 
   // Calculate remaining players (not yet eliminated)
   const remainingPlayers = useMockData ? MOCK_REMAINING_PLAYERS : registrations.filter((r) => !r.eliminated_at).length
+
+  // Calculate remaining premium players (tier B, not yet eliminated)
+  const remainingPremiumPlayers = useMockData ? Math.floor(MOCK_REMAINING_PLAYERS / 2) : registrations.filter((r) => !r.eliminated_at && r.selected_buyin_tier === 'B').length
 
   // Calculate minimum points for each top 3 player (if they finish last among remaining players)
   const minTournamentPoints = calculatePOYPointsForPlacement(remainingPlayers)
@@ -292,17 +292,61 @@ function DisplayContent() {
     return bPoints - aPoints
   })
 
-  console.log('All rankings before slice:', sortedRankings.length)
-  console.log('Sorted rankings (first 20):', sortedRankings.slice(0, 20).map((r, i) => ({
-    index: i + 1,
-    name: r.player_name,
-    points: r.total_points
-  })))
-
   const finalRankings = sortedRankings.slice(0, 15) // Limit to top 15 total
 
+  // Calculate separate prize pools for standard and premium
+  // Standard players (150): contribute 150 to standard pool
+  // Premium players (300): contribute 150 to standard pool + 150 to premium pool
+  const { standardPool, premiumPool } = useMockData
+    ? { standardPool: 10000, premiumPool: 5000 }
+    : registrations
+        .filter(r => r.is_confirmed)
+        .reduce((pools, r) => {
+          const buyIn = r.buy_in_amount || 0
+          const rebuys = r.number_of_rebuys || 0
+          const totalContribution = buyIn + (rebuys * buyIn)
+          const tier = r.selected_buyin_tier || 'A'
+          const playerName = r.full_name || 'Unknown'
+
+          if (tier === 'B') {
+            // Premium player: split contribution 50/50 between standard and premium pools
+            const halfContribution = totalContribution / 2
+            pools.standardPool += halfContribution
+            pools.premiumPool += halfContribution
+            console.log(`${playerName} (Premium): total=${totalContribution}, standard=${halfContribution}, premium=${halfContribution}`)
+          } else {
+            // Standard player: all contribution goes to standard pool
+            pools.standardPool += totalContribution
+            console.log(`${playerName} (Standard): total=${totalContribution}, standard=${totalContribution}, premium=0`)
+          }
+
+          return pools
+        }, { standardPool: 0, premiumPool: 0 })
+
+  console.log(`Standard Pool: ${standardPool}, Premium Pool: ${premiumPool} (from ${registrations.filter(r => r.is_confirmed).length} confirmed players)`)
+
+  // Calculate payout amounts from percentages
+  // Standard payout: uses standard pool only
+  // Premium payout: uses premium pool only (returns null if no premium percentage)
+  const calculatePayoutAmount = (percentage: number | null, percentagePremium: number | null = null, isPremiumCalculation: boolean = false) => {
+    // If this is a premium calculation
+    if (isPremiumCalculation) {
+      // Only return a value if premium percentage exists
+      if (percentagePremium !== null && percentagePremium !== undefined) {
+        return premiumPool > 0 ? (premiumPool * percentagePremium) / 100 : null
+      }
+      // No premium percentage = no premium payout
+      return null
+    }
+
+    // Standard calculation: use standard pool
+    if (percentage === null) return null
+    return standardPool > 0 ? (standardPool * percentage) / 100 : null
+  }
+
   // Calculate payout info (remainingPlayers already calculated above)
-  const nextPayoutPosition = remainingPlayers
+  const nextStandardPayoutPosition = remainingPlayers
+  const nextPremiumPayoutPosition = remainingPremiumPlayers
   const sortedPayouts = [...payouts].sort((a, b) => a.placement - b.placement).slice(0, 8)
 
   return (
@@ -319,15 +363,23 @@ function DisplayContent() {
                   <TrophyIcon className="h-7 w-7 text-yellow-500 drop-shadow-lg" />
                   Player of the Year
                 </h2>
-                <div className="flex items-center gap-3 bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50">
-                  <Switch
-                    id="point-surge"
-                    checked={pointSurgeEnabled}
-                    onCheckedChange={setPointSurgeEnabled}
-                  />
-                  <Label htmlFor="point-surge" className="text-sm font-medium cursor-pointer text-slate-200">
-                    2x Point Surge {pointSurgeEnabled && <Badge variant="destructive" className="ml-1 text-xs font-bold animate-pulse">ON</Badge>}
-                  </Label>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-400">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full bg-yellow-400 shadow-lg shadow-yellow-400/50"></div>
+                  <span>Top 3 Candidate</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" transform="rotate(45 10 10)" />
+                  </svg>
+                  <span>PoY score if tournament winner</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3 h-3 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clipRule="evenodd" transform="rotate(-45 10 10)" />
+                  </svg>
+                  <span>PoY score if next eliminated</span>
                 </div>
               </div>
             </div>
@@ -348,16 +400,6 @@ function DisplayContent() {
                     const rank = hasRank ? globalRank + 1 : null
                     const isTopThree = hasRank && rank !== null && rank <= 3
                     const isActive = activePlayerNames.has(ranking.player_name.trim().toLowerCase())
-
-                    // Debug for last item
-                    if (index === finalRankings.length - 1) {
-                      console.log('LAST item in list (index ' + index + '):', {
-                        name: ranking.player_name,
-                        rank,
-                        isActive,
-                        className: isActive ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-red-500/50'
-                      })
-                    }
 
                     // Player's maximum potential: current points + winning the tournament
                     const playerMaxPotential = (ranking.total_points || 0) + maxTournamentPoints
@@ -566,6 +608,46 @@ function DisplayContent() {
               </div>
             </Card>
           )}
+
+          {/* Next Break */}
+          {(() => {
+            // Find the next level with a break
+            const nextBreakIndex = blinds.findIndex((blind, index) =>
+              index >= currentLevel && blind.break_duration && blind.break_duration > 0
+            )
+
+            if (nextBreakIndex === -1) return null // No upcoming breaks
+
+            const nextBreakLevel = nextBreakIndex + 1 // Level is 1-indexed
+            const breakDuration = blinds[nextBreakIndex].break_duration || 0
+
+            // Calculate time until break: remaining time on current level + duration of all levels until break
+            const currentLevelTimeRemaining = timeRemaining
+            const additionalLevelsTime = blinds
+              .slice(currentLevel + 1, nextBreakIndex + 1)
+              .reduce((sum, blind) => sum + blind.duration, 0)
+
+            const totalTimeToBreak = currentLevelTimeRemaining + additionalLevelsTime
+            const minutesToBreak = Math.floor(totalTimeToBreak / 60)
+            const secondsToBreak = totalTimeToBreak % 60
+
+            const breakMinutes = Math.floor(breakDuration / 60)
+
+            const hoursToBreak = Math.floor(minutesToBreak / 60)
+            const remainingMinutesToBreak = minutesToBreak % 60
+
+            return (
+              <Card className="bg-slate-900/70 backdrop-blur-sm border-slate-700/50 shadow-xl p-5 text-center min-w-[400px]">
+                <div className="text-slate-400 font-semibold text-lg mb-2">Next Break</div>
+                <div className="text-3xl font-bold text-white">
+                  {hoursToBreak}:{remainingMinutesToBreak.toString().padStart(2, '0')}:{secondsToBreak.toString().padStart(2, '0')}
+                </div>
+                <div className="text-xl text-slate-400 mt-2">
+                  ({breakMinutes} min break)
+                </div>
+              </Card>
+            )
+          })()}
         </div>
 
         {/* Right Column - Payouts */}
@@ -582,23 +664,39 @@ function DisplayContent() {
                 <span className="text-base font-semibold text-slate-300">Remaining Players:</span>
                 <span className="font-bold text-3xl text-white">{remainingPlayers}</span>
               </div>
+              <div className="flex justify-between items-center bg-slate-800/50 px-4 py-3 rounded-lg border border-slate-700/50">
+                <span className="text-base font-semibold text-slate-300">Remaining Premium Players:</span>
+                <span className="font-bold text-3xl text-white">{remainingPremiumPlayers}</span>
+              </div>
               <div className="border-t border-slate-700/50 pt-4">
                 <div className="text-slate-400 font-semibold text-base mb-3">Next Payout:</div>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center bg-slate-800/30 px-4 py-2 rounded-lg">
                     <span className="text-sm font-medium text-slate-300">If Standard:</span>
                     <span className="font-bold text-lg text-emerald-400">
-                      {sortedPayouts.find((p) => p.placement === nextPayoutPosition)
-                        ? formatCurrency(sortedPayouts.find((p) => p.placement === nextPayoutPosition)!.amount)
-                        : '-'}
+                      {(() => {
+                        const payout = sortedPayouts.find((p) => p.placement === nextStandardPayoutPosition)
+                        const amount = payout ? calculatePayoutAmount(payout.percentage, null, false) : null
+                        return amount ? formatCurrency(amount) : '-'
+                      })()}
                     </span>
                   </div>
                   <div className="flex justify-between items-center bg-slate-800/30 px-4 py-2 rounded-lg">
                     <span className="text-sm font-medium text-slate-300">If Premium:</span>
                     <span className="font-bold text-lg text-emerald-400">
-                      {sortedPayouts.find((p) => p.placement === nextPayoutPosition)?.amount_premium
-                        ? formatCurrency(sortedPayouts.find((p) => p.placement === nextPayoutPosition)!.amount_premium!)
-                        : '-'}
+                      {(() => {
+                        const standardPayout = sortedPayouts.find((p) => p.placement === nextStandardPayoutPosition)
+                        const premiumPayout = sortedPayouts.find((p) => p.placement === nextPremiumPayoutPosition)
+
+                        if (!standardPayout && !premiumPayout) return '-'
+
+                        // Premium players get: standard pool percentage (based on total remaining) + premium pool percentage (based on premium remaining)
+                        const standardAmount = standardPayout && standardPayout.percentage && standardPool > 0 ? (standardPool * standardPayout.percentage) / 100 : 0
+                        const premiumAmount = premiumPayout && premiumPayout.percentage_premium && premiumPool > 0 ? (premiumPool * premiumPayout.percentage_premium) / 100 : 0
+                        const totalAmount = standardAmount + premiumAmount
+
+                        return totalAmount > 0 ? formatCurrency(totalAmount) : '-'
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -615,46 +713,188 @@ function DisplayContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedPayouts.map((payout) => {
-                    const isPaid = payout.placement > remainingPlayers
-                    const isNext = payout.placement === nextPayoutPosition
+                  {(() => {
+                    // Show all payout positions
+                    const allPayouts = sortedPayouts
+
+                    // Find the max placement in payouts (last place that gets paid)
+                    const maxPayoutPlacement = Math.max(...allPayouts.map(p => p.placement))
 
                     return (
-                      <TableRow
-                        key={payout.id}
-                        className={`border-slate-700/50 transition-colors hover:bg-slate-800/30 ${
-                          isNext ? 'bg-emerald-900/30 shadow-lg shadow-emerald-500/10' : ''
-                        }`}
-                      >
-                        <TableCell className="text-base">
-                          <div className="flex items-center gap-2">
-                            <span className={`${isNext ? 'font-bold text-lg text-white' : 'text-slate-300'}`}>
-                              {payout.placement === 1 ? '🥇 1st' :
-                               payout.placement === 2 ? '🥈 2nd' :
-                               payout.placement === 3 ? '🥉 3rd' :
-                               `${payout.placement}th`}
-                            </span>
-                            {isNext && (
-                              <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
-                                Next
-                              </Badge>
+                      <>
+                        {/* Show all actual payout positions */}
+                        {allPayouts.map((payout) => {
+                          const isPaid = payout.placement > remainingPlayers
+                          const isNextStandard = payout.placement === nextStandardPayoutPosition
+                          const isNextPremium = payout.placement === nextPremiumPayoutPosition
+
+                          return (
+                            <TableRow
+                              key={payout.id}
+                              className={`border-slate-700/50 transition-colors hover:bg-slate-800/30 ${
+                                (isNextStandard || isNextPremium) ? 'bg-emerald-900/30 shadow-lg shadow-emerald-500/10' : ''
+                              }`}
+                            >
+                              <TableCell className="text-base">
+                                <div className="flex items-center gap-2">
+                                  <span className={`${(isNextStandard || isNextPremium) ? 'font-bold text-lg text-white' : 'text-slate-300'}`}>
+                                    {payout.placement === 1 ? '🥇 1st' :
+                                     payout.placement === 2 ? '🥈 2nd' :
+                                     payout.placement === 3 ? '🥉 3rd' :
+                                     `${payout.placement}th`}
+                                  </span>
+                                  {isPaid && (
+                                    <Badge variant="default" className="bg-slate-600 text-xs font-semibold">
+                                      Paid
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className={`text-right text-base ${isNextStandard ? 'font-bold text-lg text-emerald-400' : 'text-slate-200'}`}>
+                                <div className="flex items-center justify-end gap-2">
+                                  {isNextStandard && (
+                                    <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
+                                      Next
+                                    </Badge>
+                                  )}
+                                  <span>
+                                    {(() => {
+                                      const amount = calculatePayoutAmount(payout.percentage, null, false)
+                                      return amount ? formatCurrency(amount) : '-'
+                                    })()}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className={`text-right text-base ${isNextPremium ? 'font-bold text-lg text-emerald-400' : 'text-slate-200'}`}>
+                                <div className="flex items-center justify-end gap-2">
+                                  {isNextPremium && (
+                                    <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
+                                      Next
+                                    </Badge>
+                                  )}
+                                  <span>
+                                    {(() => {
+                                      const amount = calculatePayoutAmount(payout.percentage, payout.percentage_premium, true)
+                                      return amount ? formatCurrency(amount) : '-'
+                                    })()}
+                                  </span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+
+                        {/* Show one position after payouts (with 0 payout) */}
+                        <TableRow className={`border-slate-700/50 ${
+                          nextStandardPayoutPosition === maxPayoutPlacement + 1 || nextPremiumPayoutPosition === maxPayoutPlacement + 1
+                            ? 'bg-emerald-900/30 shadow-lg shadow-emerald-500/10'
+                            : ''
+                        }`}>
+                          <TableCell className="text-base">
+                            <span className={`${
+                              nextStandardPayoutPosition === maxPayoutPlacement + 1 || nextPremiumPayoutPosition === maxPayoutPlacement + 1
+                                ? 'font-bold text-lg text-white'
+                                : 'text-slate-300'
+                            }`}>{maxPayoutPlacement + 1}th</span>
+                          </TableCell>
+                          <TableCell className={`text-right text-base ${
+                            nextStandardPayoutPosition === maxPayoutPlacement + 1
+                              ? 'font-bold text-lg text-emerald-400'
+                              : 'text-slate-400'
+                          }`}>
+                            {nextStandardPayoutPosition === maxPayoutPlacement + 1 ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
+                                  Next
+                                </Badge>
+                                <span>{'-'}</span>
+                              </div>
+                            ) : (
+                              '-'
                             )}
-                            {isPaid && (
-                              <Badge variant="default" className="bg-slate-600 text-xs font-semibold">
-                                Paid
-                              </Badge>
+                          </TableCell>
+                          <TableCell className={`text-right text-base ${
+                            nextPremiumPayoutPosition === maxPayoutPlacement + 1
+                              ? 'font-bold text-lg text-emerald-400'
+                              : 'text-slate-400'
+                          }`}>
+                            {nextPremiumPayoutPosition === maxPayoutPlacement + 1 ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
+                                  Next
+                                </Badge>
+                                <span>{'-'}</span>
+                              </div>
+                            ) : (
+                              '-'
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell className={`text-right text-base ${isNext ? 'font-bold text-lg text-emerald-400' : 'text-slate-200'}`}>
-                          {formatCurrency(payout.amount)}
-                        </TableCell>
-                        <TableCell className={`text-right text-base ${isNext ? 'font-bold text-lg text-emerald-400' : 'text-slate-200'}`}>
-                          {payout.amount_premium ? formatCurrency(payout.amount_premium) : '-'}
-                        </TableCell>
-                      </TableRow>
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Separator before premium position (if distance > 1 from position 9) */}
+                        {nextPremiumPayoutPosition !== nextStandardPayoutPosition &&
+                         nextPremiumPayoutPosition > maxPayoutPlacement + 1 &&
+                         nextPremiumPayoutPosition > maxPayoutPlacement + 2 && (
+                          <TableRow className="border-slate-700/50">
+                            <TableCell colSpan={3} className="text-center text-slate-500 text-lg py-2">
+                              ...
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {/* Show premium position (if different from standard and > maxPayoutPlacement + 1) */}
+                        {nextPremiumPayoutPosition !== nextStandardPayoutPosition && nextPremiumPayoutPosition > maxPayoutPlacement + 1 && (
+                          <TableRow className="border-slate-700/50 bg-emerald-900/30 shadow-lg shadow-emerald-500/10">
+                            <TableCell className="text-base">
+                              <span className="font-bold text-lg text-white">{nextPremiumPayoutPosition}th</span>
+                            </TableCell>
+                            <TableCell className="text-right text-base text-slate-400">
+                              {'-'}
+                            </TableCell>
+                            <TableCell className="text-right text-base font-bold text-lg text-emerald-400">
+                              <div className="flex items-center justify-end gap-2">
+                                <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
+                                  Next
+                                </Badge>
+                                <span>{'-'}</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {/* Separator before standard position (if distance > 1 from premium position) */}
+                        {nextStandardPayoutPosition > maxPayoutPlacement + 1 &&
+                         nextStandardPayoutPosition !== nextPremiumPayoutPosition &&
+                         nextStandardPayoutPosition > nextPremiumPayoutPosition + 1 && (
+                          <TableRow className="border-slate-700/50">
+                            <TableCell colSpan={3} className="text-center text-slate-500 text-lg py-2">
+                              ...
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {/* Show standard position (if > maxPayoutPlacement + 1) */}
+                        {nextStandardPayoutPosition > maxPayoutPlacement + 1 && (
+                          <TableRow className="border-slate-700/50 bg-emerald-900/30 shadow-lg shadow-emerald-500/10">
+                            <TableCell className="text-base">
+                              <span className="font-bold text-lg text-white">{nextStandardPayoutPosition}th</span>
+                            </TableCell>
+                            <TableCell className="text-right text-base font-bold text-lg text-emerald-400">
+                              <div className="flex items-center justify-end gap-2">
+                                <Badge variant="default" className="bg-emerald-600 text-xs font-semibold shadow-lg">
+                                  Next
+                                </Badge>
+                                <span>{'-'}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right text-base text-slate-400">
+                              {'-'}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
                     )
-                  })}
+                  })()}
                 </TableBody>
               </Table>
             </div>

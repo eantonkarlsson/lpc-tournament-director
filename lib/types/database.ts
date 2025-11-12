@@ -194,6 +194,7 @@ export interface Database {
           big_blind: number
           ante: number
           duration: number
+          break_duration: number | null
           created_at: string
         }
         Insert: {
