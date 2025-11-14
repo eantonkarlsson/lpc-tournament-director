@@ -32,14 +32,6 @@ export default function VotePage() {
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Auto-load betting code from localStorage on mount
-  useEffect(() => {
-    const savedCode = localStorage.getItem('betting_code')
-    if (savedCode) {
-      setBettingCode(savedCode)
-    }
-  }, [])
-
   // Load poll data
   useEffect(() => {
     const loadPoll = async () => {
@@ -75,57 +67,10 @@ export default function VotePage() {
         if (voteCountsError) throw voteCountsError
         setVoteCounts(voteCountsData || [])
 
-        // Check if user has already voted (using localStorage)
-        const voterKey = `voted_${pollId}`
-        const storedPlayerId = localStorage.getItem(voterKey)
-        if (storedPlayerId) {
-          // Fetch player info and their vote
-          const { data: playerData } = await supabase
-            .from('players')
-            .select('*')
-            .eq('id', storedPlayerId)
-            .single()
-
-          if (playerData) {
-            setValidatedPlayer(playerData)
-
-            // Fetch their vote to highlight the selected option
-            // Try with bet_amount first, fallback to just option_id if column doesn't exist yet
-            let voteData = null
-            let voteError = null
-
-            const voteQuery = await supabase
-              .from('betting_votes')
-              .select('option_id, bet_amount')
-              .eq('poll_id', pollId)
-              .eq('player_id', storedPlayerId)
-              .single()
-
-            voteData = voteQuery.data
-            voteError = voteQuery.error
-
-            // If 406 error (column doesn't exist), try without bet_amount
-            if (voteError?.code === 'PGRST204' || voteError?.message?.includes('406')) {
-              const fallbackQuery = await supabase
-                .from('betting_votes')
-                .select('option_id')
-                .eq('poll_id', pollId)
-                .eq('player_id', storedPlayerId)
-                .single()
-
-              voteData = fallbackQuery.data
-              voteError = fallbackQuery.error
-            }
-
-            if (voteData) {
-              setUserVotedOptionId((voteData as any).option_id)
-              setUserBetAmount((voteData as any).bet_amount || 0)
-              setHasVoted(true)
-            } else if (voteError && voteError.code !== 'PGRST116') {
-              // PGRST116 is "not found" which is fine, any other error log it
-              console.error('Error fetching vote:', voteError)
-            }
-          }
+        // Check if user has a saved betting code (but don't auto-validate)
+        const savedCode = localStorage.getItem('betting_code')
+        if (savedCode) {
+          setBettingCode(savedCode)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load poll')
@@ -194,13 +139,16 @@ export default function VotePage() {
       // Check if this player has already voted
       const { data: existingVote } = await supabase
         .from('betting_votes')
-        .select('id')
+        .select('option_id, bet_amount')
         .eq('poll_id', pollId)
         .eq('player_id', typedPlayer.id)
         .single()
 
       if (existingVote) {
-        throw new Error('You have already voted in this poll')
+        // Player has already voted - show them their vote
+        setUserVotedOptionId((existingVote as any).option_id)
+        setUserBetAmount((existingVote as any).bet_amount || 0)
+        setHasVoted(true)
       }
 
       setValidatedPlayer(typedPlayer)
@@ -316,8 +264,7 @@ export default function VotePage() {
         throw new Error(voteError.message || 'Failed to submit vote')
       }
 
-      // Mark as voted in localStorage
-      localStorage.setItem(`voted_${pollId}`, validatedPlayer.id)
+      // Update UI to show vote was submitted
       setUserBetAmount(betAmount)
       setUserVotedOptionId(selectedOption)
       setHasVoted(true)
