@@ -359,7 +359,7 @@ function DisplayBettingContent() {
                     </div>
                     {voteCount && (
                       <div className="text-sm text-slate-400 mt-1">
-                        {voteCount.total_bet_amount} LPC from {voteCount.vote_count} {voteCount.vote_count === 1 ? 'vote' : 'votes'}
+                        {voteCount.total_bet_amount} LPC $ from {voteCount.vote_count} {voteCount.vote_count === 1 ? 'vote' : 'votes'}
                       </div>
                     )}
                   </button>
@@ -417,13 +417,13 @@ function DisplayBettingContent() {
                             {winner.player_name}
                           </div>
                           <div className="text-sm text-slate-400">
-                            Bet: {winner.bet_amount} LPC
+                            Bet: {winner.bet_amount} LPC $
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="text-3xl font-bold text-green-400">
-                          +{winner.winnings} LPC
+                          +{winner.winnings} LPC $
                         </div>
                         <div className="text-xs text-slate-400">
                           Total Winnings
@@ -438,7 +438,7 @@ function DisplayBettingContent() {
                 <div className="flex justify-between items-center text-lg">
                   <span className="font-semibold text-slate-300">Total Distributed:</span>
                   <span className="text-2xl font-bold text-green-400">
-                    {winners.reduce((sum, w) => sum + w.winnings, 0)} LPC
+                    {winners.reduce((sum, w) => sum + w.winnings, 0)} LPC $
                   </span>
                 </div>
               </div>

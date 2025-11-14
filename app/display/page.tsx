@@ -629,13 +629,13 @@ function DisplayContent() {
                               {winner.player_name}
                             </div>
                             <div className="text-sm text-slate-400">
-                              Bet: {winner.bet_amount} LPC
+                              Bet: {winner.bet_amount} LPC $
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="text-3xl font-bold text-green-400">
-                            +{winner.winnings} LPC
+                            +{winner.winnings} LPC $
                           </div>
                           <div className="text-xs text-slate-400">
                             Total Winnings
@@ -650,7 +650,7 @@ function DisplayContent() {
                   <div className="flex justify-between items-center text-lg">
                     <span className="font-semibold text-slate-300">Total Distributed:</span>
                     <span className="text-2xl font-bold text-green-400">
-                      {winners.reduce((sum, w) => sum + w.winnings, 0)} LPC
+                      {winners.reduce((sum, w) => sum + w.winnings, 0)} LPC $
                     </span>
                   </div>
                 </div>

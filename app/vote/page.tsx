@@ -414,20 +414,20 @@ export default function VoteLandingPage() {
                               </div>
                               <div>
                                 <p className="text-xs text-slate-400 mb-1">Your Bet</p>
-                                <p className="text-sm font-bold text-yellow-500">{history.bet_amount} LPC</p>
+                                <p className="text-sm font-bold text-yellow-500">{history.bet_amount} LPC $</p>
                               </div>
                               {history.winnings > 0 && (
                                 <div className="col-span-2 pt-3 border-t border-green-700/50">
                                   <p className="text-xs text-slate-400 mb-1">Winnings</p>
-                                  <p className="text-2xl font-bold text-green-400">+{history.winnings} LPC</p>
+                                  <p className="text-2xl font-bold text-green-400">+{history.winnings} LPC $</p>
                                   <p className="text-xs text-green-500 mt-1">
-                                    Net profit: +{history.winnings - history.bet_amount} LPC
+                                    Net profit: +{history.winnings - history.bet_amount} LPC $
                                   </p>
                                 </div>
                               )}
                               {isLost && (
                                 <div className="col-span-2 pt-3 border-t border-slate-700/50">
-                                  <p className="text-sm font-semibold text-slate-400">Lost {history.bet_amount} LPC</p>
+                                  <p className="text-sm font-semibold text-slate-400">Lost {history.bet_amount} LPC $</p>
                                 </div>
                               )}
                             </div>

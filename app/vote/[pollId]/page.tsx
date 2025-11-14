@@ -424,13 +424,13 @@ export default function VotePage() {
                         </div>
                         {isSelected && userBetAmount > 0 && (
                           <div className="text-sm text-green-300 mt-1">
-                            Your bet: {userBetAmount} LPC
+                            Your bet: {userBetAmount} LPC $
                           </div>
                         )}
                       </div>
                       <div className="flex items-center gap-3">
                         <Badge variant="outline" className="bg-slate-800 border-slate-600 text-yellow-500 font-bold">
-                          {voteCount.total_bet_amount} LPC
+                          {voteCount.total_bet_amount} LPC $
                         </Badge>
                       </div>
                     </div>

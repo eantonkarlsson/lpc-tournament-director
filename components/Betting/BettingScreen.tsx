@@ -202,7 +202,7 @@ export function BettingScreen({ poll, voteCounts, votingUrl, winningOptionId }: 
                       <div className={`text-3xl font-black shrink-0 ${
                         isWinner ? 'text-green-400' : 'text-yellow-600'
                       }`}>
-                        {voteCount.total_bet_amount} LPC
+                        {voteCount.total_bet_amount} LPC $
                       </div>
                     </div>
 
@@ -232,7 +232,7 @@ export function BettingScreen({ poll, voteCounts, votingUrl, winningOptionId }: 
             <div className="mt-6 pt-6 border-t-4 border-slate-500/50 space-y-4 bg-slate-800/30 -mx-10 -mb-10 px-10 pb-8 rounded-b-xl">
               <div className="flex justify-between items-center">
                 <span className="text-3xl font-bold text-slate-200">Total Bets:</span>
-                <span className="text-3xl font-extrabold text-yellow-600">{totalBets} LPC</span>
+                <span className="text-3xl font-extrabold text-yellow-600">{totalBets} LPC $</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-3xl font-bold text-slate-300">Total Votes:</span>
@@ -281,7 +281,7 @@ export function BettingScreen({ poll, voteCounts, votingUrl, winningOptionId }: 
                           {player.player_name}
                         </div>
                         <div className="text-xs text-slate-400">
-                          {player.total_active_bets} LPC in bets
+                          {player.total_active_bets} LPC $ in bets
                         </div>
                       </div>
                     </div>
@@ -291,7 +291,7 @@ export function BettingScreen({ poll, voteCounts, votingUrl, winningOptionId }: 
                       }`}>
                         {player.current_balance}
                       </div>
-                      <div className="text-xs text-slate-400">LPC</div>
+                      <div className="text-xs text-slate-400">LPC $</div>
                     </div>
                   </div>
                 ))
