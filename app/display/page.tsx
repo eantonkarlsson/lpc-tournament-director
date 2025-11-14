@@ -2,9 +2,11 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { useTimerStore } from '@/lib/store/timer-store'
 import { useBlindStructure, usePOYRankings, useRegistrations, usePayoutStructure } from '@/lib/supabase/hooks'
 import { MOCK_POY_RANKINGS, MOCK_BLINDS, MOCK_PAYOUTS, MOCK_REGISTRATIONS, MOCK_REMAINING_PLAYERS, MOCK_POY_POINTS_STRUCTURE } from '@/lib/mock-data'
+import { BettingScreen } from '@/components/Betting/BettingScreen'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,8 +20,24 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { TrophyIcon, DollarSignIcon, MaximizeIcon, MinimizeIcon, PlayIcon, PauseIcon, SkipForwardIcon, SkipBackIcon, RotateCcwIcon } from 'lucide-react'
+import type { Database } from '@/lib/types/database'
+import type { BettingPoll, BettingVoteCount, BettingOption } from '@/lib/types/database'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 
 export const dynamic = 'force-dynamic'
+
+interface WinnerResult {
+  player_id: string
+  player_name: string
+  bet_amount: number
+  winnings: number
+}
 
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
@@ -48,10 +66,24 @@ function formatCurrency(amount: number): string {
 function DisplayContent() {
   const searchParams = useSearchParams()
   const tournamentId = searchParams.get('tournament') || ''
+  const pollId = searchParams.get('poll') || ''
   const useMockData = tournamentId === 'demo' || !tournamentId
+  const supabase = createClient()
 
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
+  const [showBettingScreen, setShowBettingScreen] = useState(false)
+  const [showPollPicker, setShowPollPicker] = useState(false)
+  const [availablePolls, setAvailablePolls] = useState<BettingPoll[]>([])
+  const [selectedPoll, setSelectedPoll] = useState<BettingPoll | null>(null)
+  const [voteCounts, setVoteCounts] = useState<BettingVoteCount[]>([])
+  const [pollsLoading, setPollsLoading] = useState(false)
+  const [showResolveDialog, setShowResolveDialog] = useState(false)
+  const [options, setOptions] = useState<BettingOption[]>([])
+  const [selectedWinningOption, setSelectedWinningOption] = useState<string | null>(null)
+  const [resolving, setResolving] = useState(false)
+  const [winners, setWinners] = useState<WinnerResult[]>([])
+  const [showWinnersDialog, setShowWinnersDialog] = useState(false)
 
   // Timer state
   const {
@@ -96,6 +128,133 @@ function DisplayContent() {
       setBlinds(dataToLoad)
     }
   }, [blindsData, setBlinds, useMockData])
+
+  // Load available active polls for the tournament
+  useEffect(() => {
+    const loadPolls = async () => {
+      if (!tournamentId || useMockData) return
+
+      setPollsLoading(true)
+      try {
+        const { data: pollsData, error: pollsError } = await supabase
+          .from('betting_polls')
+          .select('*')
+          .eq('tournament_id', tournamentId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+
+        if (pollsError) throw pollsError
+        setAvailablePolls(pollsData || [])
+      } catch (err) {
+        console.error('Failed to load polls:', err)
+        setAvailablePolls([])
+      } finally {
+        setPollsLoading(false)
+      }
+    }
+
+    loadPolls()
+
+    // Subscribe to poll changes for real-time updates
+    if (!tournamentId || useMockData) return
+
+    const channel = supabase
+      .channel(`polls_display_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'betting_polls',
+          filter: `tournament_id=eq.${tournamentId}`,
+        },
+        (payload) => {
+          console.log('Poll update received in display:', payload)
+          // Reload polls when any poll changes
+          loadPolls()
+        }
+      )
+      .subscribe((status) => {
+        console.log('Display poll subscription status:', status)
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [tournamentId, useMockData, supabase])
+
+  // Load vote counts when a poll is selected
+  useEffect(() => {
+    const loadVoteCounts = async () => {
+      if (!selectedPoll) return
+
+      try {
+        const { data: voteCountsData, error: voteCountsError } = await supabase
+          .from('betting_vote_counts')
+          .select('*')
+          .eq('poll_id', selectedPoll.id)
+
+        if (voteCountsError) throw voteCountsError
+        setVoteCounts(voteCountsData || [])
+      } catch (err) {
+        console.error('Failed to load vote counts:', err)
+        setVoteCounts([])
+      }
+    }
+
+    loadVoteCounts()
+  }, [selectedPoll, supabase])
+
+  // Subscribe to vote count updates in real-time
+  useEffect(() => {
+    if (!selectedPoll) return
+
+    // Initial load of vote counts
+    const loadVoteCounts = async () => {
+      const { data: voteCountsData } = await supabase
+        .from('betting_vote_counts')
+        .select('*')
+        .eq('poll_id', selectedPoll.id)
+
+      if (voteCountsData) {
+        setVoteCounts(voteCountsData)
+      }
+    }
+
+    loadVoteCounts()
+
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel(`poll_votes_${selectedPoll.id}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'betting_votes',
+          filter: `poll_id=eq.${selectedPoll.id}`,
+        },
+        async (payload) => {
+          console.log('Vote update received:', payload)
+          // Reload vote counts
+          const { data: voteCountsData } = await supabase
+            .from('betting_vote_counts')
+            .select('*')
+            .eq('poll_id', selectedPoll.id)
+
+          if (voteCountsData) {
+            setVoteCounts(voteCountsData)
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status)
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [selectedPoll?.id, supabase])
 
   // Timer tick
   useEffect(() => {
@@ -148,10 +307,34 @@ function DisplayContent() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'f' || e.key === 'F') {
+      if (e.key === 'Escape') {
+        // Close poll picker or exit betting screen
+        if (showPollPicker) {
+          setShowPollPicker(false)
+        } else if (showBettingScreen) {
+          setShowBettingScreen(false)
+        }
+      } else if (e.key === 'f' || e.key === 'F') {
         toggleFullscreen()
       } else if (e.key === 'c' || e.key === 'C') {
         setShowControls((prev) => !prev)
+      } else if (e.key === 'p' || e.key === 'P') {
+        // Open poll picker when in betting mode
+        if (showBettingScreen) {
+          setShowPollPicker(true)
+        }
+      } else if (e.key === 'b' || e.key === 'B') {
+        // Toggle betting screen or show poll picker
+        if (showBettingScreen) {
+          // If already showing betting screen, go back to main display
+          setShowBettingScreen(false)
+        } else if (selectedPoll) {
+          // If a poll is already selected, show betting screen
+          setShowBettingScreen(true)
+        } else {
+          // Show poll picker
+          setShowPollPicker(true)
+        }
       } else if (e.key === ' ' && !isFullscreen) {
         e.preventDefault()
         if (isRunning && !isPaused) {
@@ -167,7 +350,64 @@ function DisplayContent() {
     return () => {
       window.removeEventListener('keydown', handleKeyPress)
     }
-  }, [isRunning, isPaused, isFullscreen])
+  }, [isRunning, isPaused, isFullscreen, selectedPoll, showBettingScreen, showPollPicker])
+
+  const handleSelectPoll = async (poll: BettingPoll) => {
+    setSelectedPoll(poll)
+    setShowPollPicker(false)
+    setShowBettingScreen(true)
+
+    // Load options for this poll
+    const { data: optionsData } = await supabase
+      .from('betting_options')
+      .select('*')
+      .eq('poll_id', poll.id)
+      .order('display_order')
+
+    setOptions(optionsData || [])
+  }
+
+  const handleResolvePoll = async () => {
+    if (!selectedWinningOption || !selectedPoll) return
+
+    setResolving(true)
+    try {
+      const { data, error } = await supabase.rpc('resolve_poll', {
+        p_poll_id: selectedPoll.id,
+        p_winning_option_id: selectedWinningOption,
+      })
+
+      if (error) throw error
+
+      // Update local poll state
+      setSelectedPoll({
+        ...selectedPoll,
+        winning_option_id: selectedWinningOption,
+        resolved_at: new Date().toISOString(),
+        is_active: false,
+      })
+
+      // Store winners and show results
+      setWinners(data || [])
+      setShowResolveDialog(false)
+      setShowWinnersDialog(true)
+
+      // Reload vote counts to show final state
+      const { data: voteCountsData } = await supabase
+        .from('betting_vote_counts')
+        .select('*')
+        .eq('poll_id', selectedPoll.id)
+
+      if (voteCountsData) {
+        setVoteCounts(voteCountsData)
+      }
+    } catch (err) {
+      console.error('Failed to resolve poll:', err)
+      alert('Failed to resolve poll: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally {
+      setResolving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -190,6 +430,242 @@ function DisplayContent() {
   const nextBlind = blinds[currentLevel + 1]
   const isOnBreak = currentBlind?.is_break === true
   const timeColor = timeRemaining <= 60 ? 'text-red-500' : timeRemaining <= 180 ? 'text-yellow-500' : 'text-green-500'
+
+  // Show poll picker modal
+  if (showPollPicker) {
+    return (
+      <div className="h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-8">
+        <Card className="bg-slate-900/90 border-slate-700 p-8 max-w-2xl w-full">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-3xl font-bold text-white">Select a Poll</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowPollPicker(false)}
+              className="border-slate-600 hover:bg-slate-800"
+            >
+              Cancel
+            </Button>
+          </div>
+
+          {pollsLoading ? (
+            <div className="text-center py-8">
+              <p className="text-slate-400">Loading polls...</p>
+            </div>
+          ) : availablePolls.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-slate-400 text-lg">No active polls available for this tournament.</p>
+              <p className="text-slate-500 text-sm mt-2">Create a poll in the database to get started.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {availablePolls.map((poll) => (
+                <button
+                  key={poll.id}
+                  onClick={() => handleSelectPoll(poll)}
+                  className="w-full text-left px-6 py-4 rounded-lg border-2 border-slate-700 bg-slate-800 hover:border-yellow-500 hover:bg-slate-750 transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-white">{poll.title}</h3>
+                      <p className="text-sm text-slate-400 mt-1">
+                        Created {new Date(poll.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="bg-green-600 text-white border-green-500">
+                      Active
+                    </Badge>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-6 pt-6 border-t border-slate-700">
+            <p className="text-sm text-slate-400 text-center">
+              Press <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs">ESC</kbd> to cancel
+            </p>
+          </div>
+        </Card>
+      </div>
+    )
+  }
+
+  // Show betting screen if toggled and poll is selected
+  if (showBettingScreen && selectedPoll) {
+    const votingUrl = typeof window !== 'undefined' ? `${window.location.origin}/vote` : ''
+    return (
+      <>
+        <BettingScreen
+          poll={selectedPoll}
+          voteCounts={voteCounts}
+          votingUrl={votingUrl}
+          winningOptionId={selectedPoll.winning_option_id}
+        />
+
+        {/* Action Buttons - Fixed position in top-right */}
+        <div className="fixed top-6 right-6 z-50 flex gap-3">
+          <Button
+            onClick={() => setShowPollPicker(true)}
+            variant="ghost"
+            className="text-white/70 hover:text-white hover:bg-white/10 font-semibold px-6 py-3 text-lg backdrop-blur-sm"
+          >
+            Change Poll (P)
+          </Button>
+
+          {selectedPoll.is_active && !selectedPoll.resolved_at && (
+            <Button
+              onClick={() => setShowResolveDialog(true)}
+              variant="ghost"
+              className="text-white/70 hover:text-white hover:bg-white/10 font-semibold px-6 py-3 text-lg backdrop-blur-sm"
+            >
+              Resolve Poll (R)
+            </Button>
+          )}
+
+          {selectedPoll.resolved_at && (
+            <Button
+              onClick={() => setShowWinnersDialog(true)}
+              variant="ghost"
+              className="text-white/70 hover:text-white hover:bg-white/10 font-semibold px-6 py-3 text-lg backdrop-blur-sm"
+            >
+              Show Winners
+            </Button>
+          )}
+        </div>
+
+        {/* Resolve Poll Dialog */}
+        <Dialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Resolve Poll</DialogTitle>
+              <DialogDescription className="text-slate-400">
+                Select the winning option to resolve this poll and distribute winnings
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+              {options.length === 0 ? (
+                <p className="text-slate-400 text-center py-8">No options available</p>
+              ) : (
+                options.map((option) => {
+                  const voteCount = voteCounts.find(vc => vc.option_id === option.id)
+                  return (
+                    <button
+                      key={option.id}
+                      onClick={() => setSelectedWinningOption(option.id)}
+                      className={`w-full text-left px-6 py-4 rounded-lg border-2 transition-all ${
+                        selectedWinningOption === option.id
+                          ? 'border-green-500 bg-green-900/50 shadow-lg shadow-green-500/20'
+                          : 'border-slate-700 bg-slate-800 hover:border-slate-600 hover:bg-slate-750'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xl font-semibold text-white">
+                          {option.option_text}
+                        </span>
+                        {selectedWinningOption === option.id && (
+                          <span className="text-sm text-green-400 font-medium">Selected Winner</span>
+                        )}
+                      </div>
+                      {voteCount && (
+                        <div className="text-sm text-slate-400 mt-1">
+                          {voteCount.total_bet_amount} LPC from {voteCount.vote_count} {voteCount.vote_count === 1 ? 'vote' : 'votes'}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-700 flex justify-between items-center">
+              <p className="text-sm text-slate-400">
+                Press <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600">ESC</kbd> to cancel
+              </p>
+              <Button
+                onClick={handleResolvePoll}
+                disabled={!selectedWinningOption || resolving}
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-2"
+              >
+                {resolving ? 'Resolving...' : 'Confirm & Resolve'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Winners Dialog */}
+        <Dialog open={showWinnersDialog} onOpenChange={setShowWinnersDialog}>
+          <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-3xl">
+            <DialogHeader>
+              <DialogTitle className="text-3xl font-bold bg-gradient-to-r from-yellow-400 to-amber-500 bg-clip-text text-transparent">
+                🏆 Poll Winners
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                {selectedPoll.title}
+              </DialogDescription>
+            </DialogHeader>
+
+            {winners.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-2xl text-slate-400">No winners - no one bet on the winning option!</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+                  {winners.map((winner, index) => (
+                    <div
+                      key={winner.player_id}
+                      className="bg-gradient-to-r from-slate-800 to-slate-750 border border-slate-700 rounded-lg px-6 py-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <span className="text-3xl font-bold text-yellow-500">
+                            #{index + 1}
+                          </span>
+                          <div>
+                            <div className="text-xl font-semibold text-white">
+                              {winner.player_name}
+                            </div>
+                            <div className="text-sm text-slate-400">
+                              Bet: {winner.bet_amount} LPC
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-3xl font-bold text-green-400">
+                            +{winner.winnings} LPC
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            Total Winnings
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-700">
+                  <div className="flex justify-between items-center text-lg">
+                    <span className="font-semibold text-slate-300">Total Distributed:</span>
+                    <span className="text-2xl font-bold text-green-400">
+                      {winners.reduce((sum, w) => sum + w.winnings, 0)} LPC
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="mt-4 pt-4 border-t border-slate-700 text-center">
+              <p className="text-sm text-slate-400">
+                Winnings have been added to player balances
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
+    )
+  }
 
   // Calculate POY rankings with logic for showing relevant players
   // Filter out players with 0 or null points (incomplete data)
@@ -674,8 +1150,8 @@ function DisplayContent() {
         {/* Right Column - Payouts */}
         <div className="flex flex-col gap-4">
           <Card className="bg-slate-900/80 backdrop-blur-sm border-slate-700/50 shadow-2xl p-6 flex-1 overflow-hidden flex flex-col">
-            <h2 className="text-3xl font-bold mb-6 flex items-center gap-3 bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
-              <DollarSignIcon className="h-7 w-7 text-emerald-500 drop-shadow-lg" />
+            <h2 className="text-3xl font-bold mb-6 flex items-center gap-3 bg-gradient-to-r from-yellow-400 to-yellow-700 bg-clip-text text-transparent">
+              <DollarSignIcon className="h-7 w-7 text-yellow-500 drop-shadow-lg" />
               Prize Pool
             </h2>
 
@@ -945,7 +1421,8 @@ function DisplayContent() {
           <p className="text-slate-300 text-sm font-medium">
             <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs">F</kbd> Fullscreen •
             <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs ml-2">C</kbd> Toggle controls •
-            <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs ml-2">Space</kbd> Play/Pause
+            <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs ml-2">Space</kbd> Play/Pause •
+            <kbd className="px-2 py-1 bg-slate-800 rounded border border-slate-600 font-mono text-xs ml-2">B</kbd> Betting
           </p>
         </div>
       )}

@@ -70,18 +70,21 @@ export interface Database {
           id: string
           name: string
           phone_number: string | null
+          betting_code: string | null
           created_at: string
         }
         Insert: {
           id?: string
           name: string
           phone_number?: string | null
+          betting_code?: string | null
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
           phone_number?: string | null
+          betting_code?: string | null
           created_at?: string
         }
       }
@@ -244,6 +247,119 @@ export interface Database {
           created_at?: string
         }
       }
+      betting_polls: {
+        Row: {
+          id: string
+          tournament_id: string
+          title: string
+          is_active: boolean
+          created_at: string
+          closed_at: string | null
+          winning_option_id: string | null
+          resolved_at: string | null
+        }
+        Insert: {
+          id?: string
+          tournament_id: string
+          title: string
+          is_active?: boolean
+          created_at?: string
+          closed_at?: string | null
+          winning_option_id?: string | null
+          resolved_at?: string | null
+        }
+        Update: {
+          id?: string
+          tournament_id?: string
+          title?: string
+          is_active?: boolean
+          created_at?: string
+          closed_at?: string | null
+          winning_option_id?: string | null
+          resolved_at?: string | null
+        }
+      }
+      betting_options: {
+        Row: {
+          id: string
+          poll_id: string
+          option_text: string
+          display_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          poll_id: string
+          option_text: string
+          display_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          poll_id?: string
+          option_text?: string
+          display_order?: number
+          created_at?: string
+        }
+      }
+      betting_votes: {
+        Row: {
+          id: string
+          poll_id: string
+          option_id: string
+          player_id: string | null
+          bet_amount: number
+          winnings: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          poll_id: string
+          option_id: string
+          player_id?: string | null
+          bet_amount?: number
+          winnings?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          poll_id?: string
+          option_id?: string
+          player_id?: string | null
+          bet_amount?: number
+          winnings?: number
+          created_at?: string
+        }
+      }
+      lpc_bucks_balances: {
+        Row: {
+          id: string
+          player_id: string
+          tournament_id: string
+          balance: number
+          starting_balance: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          player_id: string
+          tournament_id: string
+          balance?: number
+          starting_balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          player_id?: string
+          tournament_id?: string
+          balance?: number
+          starting_balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       poy_rankings: {
@@ -253,6 +369,28 @@ export interface Database {
           total_points: number
           tournaments_played: number
           total_earnings: number
+        }
+      }
+      betting_vote_counts: {
+        Row: {
+          option_id: string
+          poll_id: string
+          option_text: string
+          display_order: number
+          vote_count: number
+          total_bet_amount: number
+        }
+      }
+      player_betting_stats: {
+        Row: {
+          player_id: string
+          player_name: string
+          tournament_id: string
+          current_balance: number
+          starting_balance: number
+          total_active_bets: number
+          available_balance: number
+          total_votes: number
         }
       }
     }
@@ -272,7 +410,13 @@ export type Registration = Database['public']['Tables']['registrations']['Row']
 export type TournamentResult = Database['public']['Tables']['tournament_results']['Row']
 export type BlindStructure = Database['public']['Tables']['blind_structures']['Row']
 export type PayoutStructure = Database['public']['Tables']['payout_structures']['Row']
+export type BettingPoll = Database['public']['Tables']['betting_polls']['Row']
+export type BettingOption = Database['public']['Tables']['betting_options']['Row']
+export type BettingVote = Database['public']['Tables']['betting_votes']['Row']
+export type LPCBucksBalance = Database['public']['Tables']['lpc_bucks_balances']['Row']
 export type POYRanking = Database['public']['Views']['poy_rankings']['Row']
+export type BettingVoteCount = Database['public']['Views']['betting_vote_counts']['Row']
+export type PlayerBettingStats = Database['public']['Views']['player_betting_stats']['Row']
 
 // Insert types
 export type TournamentInsert = Database['public']['Tables']['tournaments']['Insert']
