@@ -1,6 +1,6 @@
 'use client'
 
-import { usePayoutStructure, useTournamentEntries } from '@/lib/supabase/hooks'
+import { usePayoutStructure, useRegistrations } from '@/lib/supabase/hooks'
 import {
   Table,
   TableBody,
@@ -27,7 +27,7 @@ interface PayoutLadderProps {
 
 export function PayoutLadder({ tournamentId }: PayoutLadderProps) {
   const { payouts, loading: payoutsLoading, error: payoutsError } = usePayoutStructure(tournamentId)
-  const { entries, loading: entriesLoading } = useTournamentEntries(tournamentId)
+  const { registrations: entries, loading: entriesLoading } = useRegistrations(tournamentId)
 
   if (payoutsLoading || entriesLoading) {
     return (
