@@ -414,20 +414,20 @@ function DisplayContent() {
                       <TableRow
                         key={ranking.player_id}
                         className={`border-slate-700/50 transition-colors hover:bg-slate-800/30 ${
-                          isTopThree ? 'bg-gradient-to-r from-slate-800/60 to-slate-800/30' : ''
-                        } ${isActive ? 'border-l-4 border-l-emerald-500 shadow-lg shadow-emerald-500/10' : 'border-l-4 border-l-red-500/50'}`}
+                          isActive ? 'border-l-4 border-l-emerald-500 shadow-lg shadow-emerald-500/10' : 'border-l-4 border-l-red-500/50'
+                        }`}
                       >
                         <TableCell className="font-medium text-base">
                           <div className="flex items-center gap-2">
                             {rank === 1 && <TrophyIcon className="h-5 w-5 text-yellow-400 drop-shadow-lg" />}
                             {rank === 2 && <TrophyIcon className="h-5 w-5 text-slate-300 drop-shadow-lg" />}
                             {rank === 3 && <TrophyIcon className="h-5 w-5 text-orange-500 drop-shadow-lg" />}
-                            <span className={`${isTopThree ? 'font-bold text-lg' : 'text-slate-300'}`}>{rank ?? '-'}</span>
+                            <span className="text-white">{rank ?? '-'}</span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`${isTopThree ? 'font-bold text-lg text-white' : 'text-slate-200 text-base'}`}>
+                            <span className={`text-slate-200 text-base ${isTopThree ? 'font-bold' : ''}`}>
                               {ranking.player_name}
                             </span>
                             {isActive && canReachTop3 && (
@@ -435,7 +435,7 @@ function DisplayContent() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className={`text-right ${isTopThree ? 'font-bold text-lg' : 'text-base'}`}>
+                        <TableCell className="text-right text-base">
                           <div>
                             <div className="text-white">{Math.round(ranking.total_points || 0)}</div>
                             {isActive && isTopThree && (
@@ -464,8 +464,13 @@ function DisplayContent() {
           </Card>
         </div>
 
-        {/* Center Column - Timer */}
-        <div className="flex flex-col items-center justify-center gap-8">
+        {/* Center Column - Logo & Timer */}
+        <div className="flex flex-col items-center gap-8">
+          {/* LPC Logo */}
+          <div className="text-9xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 drop-shadow-2xl">
+            LPC
+          </div>
+
           {/* Level indicator */}
           <div className="text-center flex items-center gap-4">
             {currentBlind && (
