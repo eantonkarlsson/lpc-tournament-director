@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { BlindStructure } from '@/lib/types'
+import type { BlindLevel } from '@/lib/types'
 
 interface TimerState {
   // Timer state
@@ -11,8 +11,8 @@ interface TimerState {
   savedMinute: number // last saved minute mark (only persisted at minute boundaries)
   lastTickTimestamp: number | null // timestamp of last save for resume calculation
 
-  // Blind structure
-  blinds: BlindStructure[]
+  // Blind structure (BlindLevel[] with is_break field)
+  blinds: BlindLevel[]
 
   // Actions
   start: () => void
@@ -22,7 +22,7 @@ interface TimerState {
   nextLevel: () => void
   prevLevel: () => void
   tick: () => void
-  setBlinds: (blinds: BlindStructure[]) => void
+  setBlinds: (blinds: BlindLevel[]) => void
   setCurrentLevel: (level: number) => void
   hydrate: () => void // recalculate time after page load
 }
@@ -108,7 +108,7 @@ export const useTimerStore = create<TimerState>()(
       const newTimeRemaining = timeRemaining - 1
       const newMinute = Math.ceil(newTimeRemaining / 60) * 60
 
-      // Only save to localStorage when the minute changes
+      // Only persist when the minute changes to reduce localStorage writes
       if (newMinute !== savedMinute) {
         set({
           timeRemaining: newTimeRemaining,
@@ -116,10 +116,8 @@ export const useTimerStore = create<TimerState>()(
           lastTickTimestamp: Date.now()
         })
       } else {
-        // Just update timeRemaining without changing savedMinute (still triggers persist unfortunately)
-        set({
-          timeRemaining: newTimeRemaining
-        })
+        // Lightweight update without persistence - just update timeRemaining
+        set({ timeRemaining: newTimeRemaining }, false)
       }
     } else {
       // Auto-advance to next level

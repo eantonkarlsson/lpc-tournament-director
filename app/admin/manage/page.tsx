@@ -31,6 +31,7 @@ function AdminManageContent() {
   const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null)
   const [eliminating, setEliminating] = useState(false)
   const [updatingRebuys, setUpdatingRebuys] = useState<string | null>(null)
+  const [uneliminating, setUneliminating] = useState<string | null>(null)
 
   const { registrations, loading } = useRegistrations(tournamentId)
   const supabase = createClient()
@@ -134,6 +135,44 @@ function AdminManageContent() {
       alert('Failed to update rebuys. Please try again.')
     } finally {
       setUpdatingRebuys(null)
+    }
+  }
+
+  const handleUneliminatePlayer = async (registration: Registration) => {
+    if (!registration.id || !tournamentId) return
+
+    setUneliminating(registration.id)
+
+    try {
+      // Clear eliminated_at and placement
+      const { error: updateError } = await (supabase as any)
+        .from('registrations')
+        .update({
+          eliminated_at: null,
+          placement: null
+        })
+        .eq('id', registration.id)
+
+      if (updateError) throw updateError
+
+      // Delete tournament_results entry if it exists
+      if (registration.player_id) {
+        const { error: deleteError } = await (supabase as any)
+          .from('tournament_results')
+          .delete()
+          .eq('tournament_id', tournamentId)
+          .eq('player_id', registration.player_id)
+
+        if (deleteError) {
+          console.error('Error deleting tournament result:', deleteError)
+          // Don't fail the un-elimination if tournament_results deletion fails
+        }
+      }
+    } catch (error) {
+      console.error('Error un-eliminating player:', error)
+      alert('Failed to un-eliminate player. Please try again.')
+    } finally {
+      setUneliminating(null)
     }
   }
 
@@ -276,6 +315,7 @@ function AdminManageContent() {
             <h2 className="text-3xl font-bold mb-6 text-slate-300">Recently Eliminated</h2>
             <div className="space-y-3">
               {eliminatedRegistrations.slice(0, 5).map((registration) => {
+                const isUneliminating = uneliminating === registration.id
                 return (
                   <div
                     key={registration.id}
@@ -289,6 +329,15 @@ function AdminManageContent() {
                           : 'Eliminated'}
                       </p>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleUneliminatePlayer(registration)}
+                      disabled={isUneliminating}
+                      className="font-semibold border-emerald-600 hover:bg-emerald-900/30 text-emerald-400"
+                    >
+                      {isUneliminating ? 'Un-eliminating...' : 'Un-eliminate'}
+                    </Button>
                   </div>
                 )
               })}

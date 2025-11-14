@@ -188,6 +188,7 @@ function DisplayContent() {
 
   const currentBlind = blinds[currentLevel]
   const nextBlind = blinds[currentLevel + 1]
+  const isOnBreak = currentBlind?.is_break === true
   const timeColor = timeRemaining <= 60 ? 'text-red-500' : timeRemaining <= 180 ? 'text-yellow-500' : 'text-green-500'
 
   // Calculate POY rankings with logic for showing relevant players
@@ -313,17 +314,14 @@ function DisplayContent() {
             const halfContribution = totalContribution / 2
             pools.standardPool += halfContribution
             pools.premiumPool += halfContribution
-            console.log(`${playerName} (Premium): total=${totalContribution}, standard=${halfContribution}, premium=${halfContribution}`)
           } else {
             // Standard player: all contribution goes to standard pool
             pools.standardPool += totalContribution
-            console.log(`${playerName} (Standard): total=${totalContribution}, standard=${totalContribution}, premium=0`)
           }
 
           return pools
         }, { standardPool: 0, premiumPool: 0 })
 
-  console.log(`Standard Pool: ${standardPool}, Premium Pool: ${premiumPool} (from ${registrations.filter(r => r.is_confirmed).length} confirmed players)`)
 
   // Calculate payout amounts from percentages
   // Standard payout: uses standard pool only
@@ -471,12 +469,18 @@ function DisplayContent() {
             LPC
           </div>
 
-          {/* Level indicator */}
+          {/* Level indicator or BREAK indicator */}
           <div className="text-center flex items-center gap-4">
             {currentBlind && (
-              <Badge variant="outline" className="text-2xl font-bold px-6 py-3 bg-slate-800/50 border-slate-600 text-slate-200 shadow-lg">
-                Level {currentBlind.level}
-              </Badge>
+              isOnBreak ? (
+                <Badge variant="outline" className="text-4xl font-bold px-12 py-4 bg-blue-600 text-white border-blue-400 shadow-lg">
+                  BREAK
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-2xl font-bold px-6 py-3 bg-slate-800/50 border-slate-600 text-slate-200 shadow-lg">
+                  Level {currentBlind.level}
+                </Badge>
+              )
             )}
             {isPaused && (
               <Badge variant="destructive" className="text-xl font-bold px-5 py-2 animate-pulse shadow-lg">
@@ -485,20 +489,35 @@ function DisplayContent() {
             )}
           </div>
 
-          {/* Current blinds */}
+          {/* Current blinds or BREAK message */}
           {currentBlind ? (
-            <Card className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-sm border-slate-600/50 shadow-2xl p-10 text-center min-w-[500px]">
-              <div className="space-y-4">
-                <div className="text-7xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
-                  {formatChips(currentBlind.small_blind)} / {formatChips(currentBlind.big_blind)}
-                </div>
-                {currentBlind.ante > 0 && (
-                  <div className="text-3xl font-semibold text-slate-300">
-                    Ante: {formatChips(currentBlind.ante)}
+            isOnBreak ? (
+              <Card className="bg-gradient-to-br from-blue-900/90 to-blue-800/90 backdrop-blur-sm border-blue-600/50 shadow-2xl p-10 text-center min-w-[500px]">
+                <div className="space-y-4">
+                  <div className="text-7xl font-bold text-white drop-shadow-2xl">
+                    ☕ Break Time
                   </div>
-                )}
-              </div>
-            </Card>
+                  {nextBlind && !nextBlind.is_break && (
+                    <div className="text-2xl font-semibold text-blue-200">
+                      Next: {formatChips(nextBlind.small_blind)} / {formatChips(nextBlind.big_blind)}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ) : (
+              <Card className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 backdrop-blur-sm border-slate-600/50 shadow-2xl p-10 text-center min-w-[500px]">
+                <div className="space-y-4">
+                  <div className="text-7xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent drop-shadow-2xl">
+                    {formatChips(currentBlind.small_blind)} / {formatChips(currentBlind.big_blind)}
+                  </div>
+                  {currentBlind.ante > 0 && (
+                    <div className="text-3xl font-semibold text-slate-300">
+                      Ante: {formatChips(currentBlind.ante)}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )
           ) : (
             <Card className="bg-slate-800/90 border-slate-600/50 p-10 text-center min-w-[500px]">
               <p className="text-slate-400 text-xl">No blind structure loaded</p>
@@ -599,17 +618,12 @@ function DisplayContent() {
             </Card>
           )}
 
-          {/* Next level */}
-          {nextBlind && (
+          {/* Next level (only show if not on break and next level is not a break) */}
+          {!isOnBreak && nextBlind && (
             <Card className="bg-slate-900/70 backdrop-blur-sm border-slate-700/50 shadow-xl p-5 text-center min-w-[400px]">
               <div className="text-slate-400 font-semibold text-lg mb-2">Next Level</div>
               <div className="text-3xl font-bold text-white">
-                {formatChips(nextBlind.small_blind)} / {formatChips(nextBlind.big_blind)}
-                {nextBlind.ante > 0 && (
-                  <span className="text-xl text-slate-400 ml-2">
-                    (Ante: {formatChips(nextBlind.ante)})
-                  </span>
-                )}
+                {nextBlind.is_break ? 'Break' : formatChips(nextBlind.small_blind) + '/' + formatChips(nextBlind.big_blind)}
               </div>
             </Card>
           )}
@@ -618,18 +632,20 @@ function DisplayContent() {
           {(() => {
             // Find the next level with a break
             const nextBreakIndex = blinds.findIndex((blind, index) =>
-              index >= currentLevel && blind.break_duration && blind.break_duration > 0
+              index > currentLevel && blind.is_break
             )
 
             if (nextBreakIndex === -1) return null // No upcoming breaks
 
-            const nextBreakLevel = nextBreakIndex + 1 // Level is 1-indexed
-            const breakDuration = blinds[nextBreakIndex].break_duration || 0
+            // Don't show if the next level is the break (we're on the level right before it)
+            if (nextBreakIndex === currentLevel + 1) return null
+
+            const breakDuration = blinds[nextBreakIndex].duration || 0
 
             // Calculate time until break: remaining time on current level + duration of all levels until break
             const currentLevelTimeRemaining = timeRemaining
             const additionalLevelsTime = blinds
-              .slice(currentLevel + 1, nextBreakIndex + 1)
+              .slice(currentLevel + 1, nextBreakIndex)
               .reduce((sum, blind) => sum + blind.duration, 0)
 
             const totalTimeToBreak = currentLevelTimeRemaining + additionalLevelsTime

@@ -7,6 +7,7 @@ import type {
   Registration,
   Tournament,
   BlindStructure,
+  BlindLevel,
   PayoutStructure
 } from '@/lib/types'
 
@@ -221,9 +222,9 @@ export function useTournament(tournamentId: string) {
   return { tournament, loading, error }
 }
 
-// Hook for blind structures
+// Hook for blind structures (transforms to BlindLevel[] with is_break field)
 export function useBlindStructure(tournamentId: string) {
-  const [blinds, setBlinds] = useState<BlindStructure[]>([])
+  const [blinds, setBlinds] = useState<BlindLevel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const supabase = createClient()
@@ -243,7 +244,43 @@ export function useBlindStructure(tournamentId: string) {
           .order('level', { ascending: true })
 
         if (error) throw error
-        setBlinds(data || [])
+
+        // Transform database BlindStructure to frontend BlindLevel model
+        const transformedBlinds: BlindLevel[] = []
+        const rawBlinds = (data || []) as BlindStructure[]
+
+        console.log('🎯 Raw blinds from database:', rawBlinds)
+
+        rawBlinds.forEach((blind) => {
+          // Add the regular blind level with is_break: false
+          transformedBlinds.push({
+            tournament_id: blind.tournament_id,
+            level: blind.level,
+            small_blind: blind.small_blind,
+            big_blind: blind.big_blind,
+            ante: blind.ante,
+            duration: blind.duration,
+            is_break: false
+          })
+
+          // If this level has a break, add a break level after it
+          if (blind.break_duration && blind.break_duration > 0) {
+            const breakLevel: BlindLevel = {
+              tournament_id: blind.tournament_id,
+              level: 0,
+              small_blind: 0,
+              big_blind: 0,
+              ante: 0,
+              duration: blind.break_duration,
+              is_break: true
+            }
+            transformedBlinds.push(breakLevel)
+            console.log(`🎯 Inserted break after Level ${blind.level}:`, breakLevel)
+          }
+        })
+
+        console.log('🎯 Final blinds with breaks:', transformedBlinds)
+        setBlinds(transformedBlinds)
       } catch (err) {
         setError(err as Error)
       } finally {
