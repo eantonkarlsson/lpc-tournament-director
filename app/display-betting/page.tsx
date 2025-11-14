@@ -61,7 +61,7 @@ function DisplayBettingContent() {
         if (pollError) throw pollError
         if (!pollData) throw new Error('Poll not found')
 
-        setPoll(pollData)
+        setPoll(pollData as BettingPoll)
 
         // Fetch vote counts
         const { data: voteCountsData, error: voteCountsError } = await supabase
@@ -73,11 +73,12 @@ function DisplayBettingContent() {
         setVoteCounts(voteCountsData || [])
 
         // Load available polls for the same tournament
-        if (pollData.tournament_id) {
+        const typedPollData = pollData as BettingPoll
+        if (typedPollData.tournament_id) {
           const { data: pollsData } = await supabase
             .from('betting_polls')
             .select('*')
-            .eq('tournament_id', pollData.tournament_id)
+            .eq('tournament_id', typedPollData.tournament_id)
             .eq('is_active', true)
             .order('created_at', { ascending: false })
 
@@ -114,7 +115,7 @@ function DisplayBettingContent() {
 
     setResolving(true)
     try {
-      const { data, error } = await supabase.rpc('resolve_poll', {
+      const { data, error } = await (supabase as any).rpc('resolve_poll', {
         p_poll_id: poll.id,
         p_winning_option_id: selectedWinningOption,
       })

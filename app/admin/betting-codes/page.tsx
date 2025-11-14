@@ -139,12 +139,6 @@ export default function BettingCodesPage() {
         doc.setLineWidth(0.5)
         doc.rect(currentX, currentY, cardWidth, cardHeight)
 
-        // Draw dotted cut line
-        doc.setLineDash([2, 2])
-        doc.setDrawColor(150, 150, 150)
-        doc.line(currentX, currentY, currentX + cardWidth, currentY)
-        doc.setLineDash([]) // Reset to solid line
-
         // Player name
         doc.setFontSize(14)
         doc.setFont('helvetica', 'bold')

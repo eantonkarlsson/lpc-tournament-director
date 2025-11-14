@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { BlindLevel } from '@/lib/types'
+import type { BlindStructure } from '@/lib/types/database'
 
 interface TimerState {
   // Timer state
@@ -125,7 +126,7 @@ export const useTimerStore = create<TimerState>()(
     }
   },
 
-  setBlinds: (blinds: BlindStructure[]) => {
+  setBlinds: (blinds: BlindLevel[]) => {
     const { timeRemaining, isRunning, isPaused, savedMinute } = get()
     const duration = blinds[0]?.duration || 900
 

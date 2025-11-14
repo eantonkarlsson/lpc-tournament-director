@@ -118,7 +118,7 @@ export default function VotePage() {
             }
 
             if (voteData) {
-              setUserVotedOptionId(voteData.option_id)
+              setUserVotedOptionId((voteData as any).option_id)
               setUserBetAmount((voteData as any).bet_amount || 0)
               setHasVoted(true)
             } else if (voteError && voteError.code !== 'PGRST116') {
@@ -189,26 +189,28 @@ export default function VotePage() {
         throw new Error('Invalid betting code. Please check and try again.')
       }
 
+      const typedPlayer = player as Player
+
       // Check if this player has already voted
       const { data: existingVote } = await supabase
         .from('betting_votes')
         .select('id')
         .eq('poll_id', pollId)
-        .eq('player_id', player.id)
+        .eq('player_id', typedPlayer.id)
         .single()
 
       if (existingVote) {
         throw new Error('You have already voted in this poll')
       }
 
-      setValidatedPlayer(player)
+      setValidatedPlayer(typedPlayer)
 
       // Save betting code to localStorage for future use
-      localStorage.setItem('betting_code', player.betting_code || bettingCode.trim().toLowerCase())
+      localStorage.setItem('betting_code', typedPlayer.betting_code || bettingCode.trim().toLowerCase())
 
       // Get player's balance for this tournament
       console.log('Fetching balance for:', {
-        player_id: player.id,
+        player_id: typedPlayer.id,
         tournament_id: poll!.tournament_id
       })
 
@@ -216,21 +218,21 @@ export default function VotePage() {
       const { data: statsData, error: statsError } = await supabase
         .from('player_betting_stats')
         .select('*')
-        .eq('player_id', player.id)
+        .eq('player_id', typedPlayer.id)
         .eq('tournament_id', poll!.tournament_id)
         .single()
 
       console.log('Stats view result:', { statsData, statsError })
 
       if (statsData) {
-        console.log('Using stats view, available balance:', statsData.available_balance)
-        setPlayerBalance(statsData.available_balance)
+        console.log('Using stats view, available balance:', (statsData as any).available_balance)
+        setPlayerBalance((statsData as any).available_balance)
       } else {
         // Try querying the balance table directly
         const { data: balanceData, error: balanceError } = await supabase
           .from('lpc_bucks_balances')
           .select('*')
-          .eq('player_id', player.id)
+          .eq('player_id', typedPlayer.id)
           .eq('tournament_id', poll!.tournament_id)
           .single()
 
@@ -241,14 +243,14 @@ export default function VotePage() {
           const { data: activeBets } = await supabase
             .from('betting_votes')
             .select('bet_amount')
-            .eq('player_id', player.id)
+            .eq('player_id', typedPlayer.id)
             .neq('poll_id', poll!.id)
 
-          const totalActiveBets = activeBets?.reduce((sum, vote) => sum + (vote.bet_amount || 0), 0) || 0
-          const availableBalance = balanceData.balance - totalActiveBets
+          const totalActiveBets = activeBets?.reduce((sum, vote) => sum + ((vote as any).bet_amount || 0), 0) || 0
+          const availableBalance = (balanceData as any).balance - totalActiveBets
 
           console.log('Calculated available balance:', {
-            balance: balanceData.balance,
+            balance: (balanceData as any).balance,
             totalActiveBets,
             availableBalance
           })
@@ -257,7 +259,7 @@ export default function VotePage() {
         } else {
           // No balance record - this shouldn't happen if the SQL script ran
           console.error('No balance found for player:', {
-            player_id: player.id,
+            player_id: typedPlayer.id,
             tournament_id: poll!.tournament_id,
             statsError,
             balanceError
@@ -296,8 +298,8 @@ export default function VotePage() {
 
     try {
       // Submit vote with bet amount
-      const { error: voteError } = await supabase
-        .from('betting_votes')
+      const { error: voteError } = await (supabase
+        .from('betting_votes') as any)
         .insert({
           poll_id: pollId,
           option_id: selectedOption,

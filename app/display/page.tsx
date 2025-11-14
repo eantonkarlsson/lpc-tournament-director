@@ -22,6 +22,7 @@ import {
 import { TrophyIcon, DollarSignIcon, MaximizeIcon, MinimizeIcon, PlayIcon, PauseIcon, SkipForwardIcon, SkipBackIcon, RotateCcwIcon } from 'lucide-react'
 import type { Database } from '@/lib/types/database'
 import type { BettingPoll, BettingVoteCount, BettingOption } from '@/lib/types/database'
+import type { BlindLevel } from '@/lib/types'
 import {
   Dialog,
   DialogContent,
@@ -125,7 +126,7 @@ function DisplayContent() {
   useEffect(() => {
     const dataToLoad = useMockData ? MOCK_BLINDS : blindsData
     if (dataToLoad.length > 0) {
-      setBlinds(dataToLoad)
+      setBlinds(dataToLoad as BlindLevel[])
     }
   }, [blindsData, setBlinds, useMockData])
 
@@ -372,7 +373,7 @@ function DisplayContent() {
 
     setResolving(true)
     try {
-      const { data, error } = await supabase.rpc('resolve_poll', {
+      const { data, error } = await (supabase as any).rpc('resolve_poll', {
         p_poll_id: selectedPoll.id,
         p_winning_option_id: selectedWinningOption,
       })
@@ -1173,7 +1174,7 @@ function DisplayContent() {
                     <span className="font-bold text-lg text-emerald-400">
                       {(() => {
                         const payout = sortedPayouts.find((p) => p.placement === nextStandardPayoutPosition)
-                        const amount = payout ? calculatePayoutAmount(payout.percentage, null, false) : null
+                        const amount = payout ? calculatePayoutAmount((payout as any).percentage, null, false) : null
                         return amount ? formatCurrency(amount) : '-'
                       })()}
                     </span>
@@ -1188,8 +1189,8 @@ function DisplayContent() {
                         if (!standardPayout && !premiumPayout) return '-'
 
                         // Premium players get: standard pool percentage (based on total remaining) + premium pool percentage (based on premium remaining)
-                        const standardAmount = standardPayout && standardPayout.percentage && standardPool > 0 ? (standardPool * standardPayout.percentage) / 100 : 0
-                        const premiumAmount = premiumPayout && premiumPayout.percentage_premium && premiumPool > 0 ? (premiumPool * premiumPayout.percentage_premium) / 100 : 0
+                        const standardAmount = standardPayout && (standardPayout as any).percentage && standardPool > 0 ? (standardPool * (standardPayout as any).percentage) / 100 : 0
+                        const premiumAmount = premiumPayout && (premiumPayout as any).percentage_premium && premiumPool > 0 ? (premiumPool * (premiumPayout as any).percentage_premium) / 100 : 0
                         const totalAmount = standardAmount + premiumAmount
 
                         return totalAmount > 0 ? formatCurrency(totalAmount) : '-'
@@ -1256,7 +1257,7 @@ function DisplayContent() {
                                   )}
                                   <span>
                                     {(() => {
-                                      const amount = calculatePayoutAmount(payout.percentage, null, false)
+                                      const amount = calculatePayoutAmount((payout as any).percentage, null, false)
                                       return amount ? formatCurrency(amount) : '-'
                                     })()}
                                   </span>
@@ -1271,7 +1272,7 @@ function DisplayContent() {
                                   )}
                                   <span>
                                     {(() => {
-                                      const amount = calculatePayoutAmount(payout.percentage, payout.percentage_premium, true)
+                                      const amount = calculatePayoutAmount((payout as any).percentage, (payout as any).percentage_premium, true)
                                       return amount ? formatCurrency(amount) : '-'
                                     })()}
                                   </span>

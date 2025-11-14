@@ -56,7 +56,7 @@ export function BettingScreen({ poll, voteCounts, votingUrl, winningOptionId }: 
         .select('current_balance')
         .eq('tournament_id', poll.tournament_id)
 
-      const total = allPlayers?.reduce((sum, p) => sum + p.current_balance, 0) || 0
+      const total = allPlayers?.reduce((sum, p) => sum + (p as any).current_balance, 0) || 0
       setTotalCirculation(total)
     }
 

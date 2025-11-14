@@ -59,11 +59,12 @@ function AdminPollsContent() {
           .limit(20)
 
         if (error) throw error
-        setTournaments(data || [])
+        const tournamentData = (data as Tournament[]) || []
+        setTournaments(tournamentData)
 
         // Set default tournament if not set
-        if (!selectedTournamentId && data && data.length > 0) {
-          setSelectedTournamentId(data[0].id)
+        if (!selectedTournamentId && tournamentData.length > 0) {
+          setSelectedTournamentId(tournamentData[0].id)
         }
       } catch (err) {
         console.error('Failed to load tournaments:', err)
@@ -137,8 +138,8 @@ function AdminPollsContent() {
 
     try {
       // Create poll
-      const { data: pollData, error: pollError } = await supabase
-        .from('betting_polls')
+      const { data: pollData, error: pollError } = await (supabase
+        .from('betting_polls') as any)
         .insert({
           tournament_id: selectedTournamentId,
           title: pollTitle.trim(),
@@ -156,8 +157,8 @@ function AdminPollsContent() {
         display_order: index,
       }))
 
-      const { error: optionsError } = await supabase
-        .from('betting_options')
+      const { error: optionsError } = await (supabase
+        .from('betting_options') as any)
         .insert(optionsToInsert)
 
       if (optionsError) throw optionsError
@@ -184,8 +185,8 @@ function AdminPollsContent() {
 
   const handleToggleActive = async (poll: BettingPoll) => {
     try {
-      const { error } = await supabase
-        .from('betting_polls')
+      const { error } = await (supabase
+        .from('betting_polls') as any)
         .update({ is_active: !poll.is_active })
         .eq('id', poll.id)
 
