@@ -66,7 +66,7 @@ export default function BettingCodesPage() {
 
         if (regError) throw regError
 
-        const playerIds = (registrations || []).map(r => r.player_id)
+        const playerIds = ((registrations || []) as { player_id: string }[]).map(r => r.player_id)
 
         if (playerIds.length === 0) {
           setPlayers([])
