@@ -229,7 +229,7 @@ function DisplayBettingContent() {
   }
 
   // Construct voting URL - use landing page
-  const votingUrl = `${window.location.origin}/vote`
+  const votingUrl = 'https://www.liljeholmenpokerclub.se/vote'
 
   // Debug logging
   console.log('Poll state:', {

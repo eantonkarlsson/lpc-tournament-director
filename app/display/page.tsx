@@ -494,7 +494,7 @@ function DisplayContent() {
 
   // Show betting screen if toggled and poll is selected
   if (showBettingScreen && selectedPoll) {
-    const votingUrl = typeof window !== 'undefined' ? `${window.location.origin}/vote` : ''
+    const votingUrl = 'https://www.liljeholmenpokerclub.se/vote'
     return (
       <>
         <BettingScreen

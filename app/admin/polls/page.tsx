@@ -293,7 +293,7 @@ function AdminPollsContent() {
                       Poll ID: {poll.id}
                     </div>
                     <div className="mt-2 text-sm text-slate-400">
-                      Voting URL: <code className="text-cyan-400">{typeof window !== 'undefined' ? `${window.location.origin}/vote/${poll.id}` : ''}</code>
+                      Voting URL: <code className="text-cyan-400">https://www.liljeholmenpokerclub.se/vote/{poll.id}</code>
                     </div>
                   </div>
                   <div className="flex gap-2">
